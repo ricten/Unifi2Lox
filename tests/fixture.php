@@ -7,6 +7,7 @@
  *   Switch   (usw)  MAC ...02  26 Ports, 24 mit PoE (Budget 220 W), Uplink an Port 22, Access Points an Port 4 und 6
  *   AP 1     (uap)  MAC ...03  6 Clients (4 im 2,4-, 2 im 5-GHz-Band), davon 1 Gast
  *   AP 2     (uap)  MAC ...04  2 Clients (beide 5 GHz)
+ *   Bekannte Clients (rest/user): die 19 verbundenen plus 3 derzeit nicht verbundene (MAC 02:00:00:00:30:xx)
  */
 const FX_GW = '02:00:00:00:00:01';
 const FX_SW = '02:00:00:00:00:02';
@@ -37,14 +38,47 @@ function fx_geraete(): array
                 'poe_current' => $g ? number_format($poe[$i][2], 2, '.', '') : '0.00', 'poe_class' => $g ? 'Class 4' : 'Unknown'];
             $sw['port_overrides'][] = ['port_idx' => $i, 'poe_mode' => 'auto', 'name' => 'Port ' . $i, 'portconf_id' => 'pc-all', 'op_mode' => 'switch'];
         }
+        if ($i === 15 || $i === 16 || $i === 26) {           // wie am echten Gateway: ohne Port-Profil, die Weiterleitung steht am Port
+            unset($p['portconf_id']);
+            $p += ['forward' => $i === 16 ? 'customize' : 'all', 'enable' => true, 'native_networkconf_id' => 'net-1', 'tagged_vlan_mgmt' => $i === 16 ? 'custom' : 'auto', 'setting_preference' => 'auto', 'port_security_enabled' => false];
+        }
         $sw['port_table'][] = $p;
     }
+    foreach ($sw['port_overrides'] as &$o) {
+        if ($o['port_idx'] === 15 || $o['port_idx'] === 16) {
+            unset($o['portconf_id']);
+            $o += ['setting_preference' => 'auto', 'port_security_enabled' => false, 'forward' => $o['port_idx'] === 16 ? 'customize' : 'all', 'native_networkconf_id' => 'net-1', 'tagged_vlan_mgmt' => $o['port_idx'] === 16 ? 'custom' : 'auto'];
+            if ($o['port_idx'] === 16) {
+                $o['excluded_networkconf_ids'] = ['net-2'];
+            }
+        }
+    }
+    unset($o);
     $ap = function (string $id, string $mac, string $name, int $port, int $n, int $gast, int $ng, int $na) {
         return ['_id' => $id, 'mac' => $mac, 'type' => 'uap', 'model' => 'UAP6MP', 'name' => $name, 'state' => 1, 'num_sta' => $n, 'user-num_sta' => $n, 'guest-num_sta' => $gast,
             'radio_table_stats' => [['radio' => 'ng', 'channel' => 3, 'num_sta' => $ng], ['radio' => 'na', 'channel' => 48, 'num_sta' => $na]],
             'uplink' => ['type' => 'wire', 'uplink_mac' => FX_SW, 'uplink_remote_port' => $port], 'port_table' => []];
     };
     return [$gw, $sw, $ap('id-ap1', FX_AP1, 'AP Wohnzimmer', 4, 6, 1, 4, 2), $ap('id-ap2', FX_AP2, 'AP Dachboden', 6, 2, 0, 0, 2)];
+}
+
+/** Antwort von rest/user: alle bekannten Clients, auch die nicht verbundenen. */
+function fx_bekannte(): array
+{
+    $out = [];
+    foreach (fx_clients() as $c) {
+        $e = ['mac' => $c['mac'], 'is_wired' => $c['is_wired'], 'last_ip' => $c['ip'], 'last_seen' => 1700000000, 'blocked' => false, 'noted' => false];
+        foreach (['name', 'hostname'] as $k) {
+            if (isset($c[$k])) {
+                $e[$k] = $c[$k];
+            }
+        }
+        $out[] = $e;
+    }
+    $out[] = ['mac' => '02:00:00:00:30:01', 'is_wired' => true, 'name' => 'Alter Drucker', 'last_ip' => '192.0.2.201', 'last_seen' => 1699900000];
+    $out[] = ['mac' => '02:00:00:00:30:02', 'is_wired' => false, 'hostname' => 'handy-gast', 'fixed_ip' => '192.0.2.202', 'last_seen' => 1690000000];
+    $out[] = ['mac' => '02:00:00:00:30:03', 'is_wired' => false, 'last_seen' => 1600000000];
+    return $out;
 }
 
 function fx_clients(): array

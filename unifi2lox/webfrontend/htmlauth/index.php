@@ -33,7 +33,7 @@ $alter = isset($status['time']) ? time() - (int)$status['time'] : null;
 $laeuft = $alter !== null && $alter <= 10;
 $anmStatus = $laeuft ? (string)($status['anmeldung']['status'] ?? '') : '';
 $tab = $_GET['tab'] ?? '';
-if (!in_array($tab, ['verbindung', 'geraete', 'netz', 'mqtt', 'loxone', 'test', 'logs'], true)) {
+if (!in_array($tab, ['verbindung', 'geraete', 'netz', 'clients', 'mqtt', 'loxone', 'test', 'logs'], true)) {
     $tab = ($anmStatus === 'ok') ? 'netz' : 'verbindung';
 }
 $meldungen = [];
@@ -69,7 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $basis = '?tab=';
-$tabs = ['verbindung' => 'Verbindung', 'geraete' => 'Geräte', 'netz' => 'Netzwerk', 'mqtt' => 'MQTT', 'loxone' => 'Einbindung in Loxone', 'test' => 'Test', 'logs' => 'Logdateien'];
+$tabs = ['verbindung' => 'Verbindung', 'geraete' => 'Geräte', 'netz' => 'Netzwerk', 'clients' => 'Clients', 'mqtt' => 'MQTT', 'loxone' => 'Einbindung in Loxone', 'test' => 'Test', 'logs' => 'Logdateien'];
 // Menüleiste der LoxBerry-Oberfläche: $navbar muss vor lbheader() definiert sein
 $navbar = [];
 $nr = 10;
@@ -86,6 +86,7 @@ foreach ($modell['geraete'] ?? [] as $g) {
     $gefunden[] = ['mac' => $g['mac'], 'name' => $g['name'], 'typ' => $g['typ']];
 }
 $namenNachMac = UniConfig::namen($uni, $gefunden);
+$bekannteClients = is_array($netz['bekannt'] ?? null) ? $netz['bekannt'] : [];
 
 // 4. Parameter true: LoxBerry Design System (lb-*-Klassen) statt jQuery Mobile
 LBWeb::lbheader('Unifi2Lox ' . AppVersion::CURRENT, '', '', true);
@@ -152,7 +153,7 @@ LBWeb::lbheader('Unifi2Lox ' . AppVersion::CURRENT, '', '', true);
 <p class="hinweis">Noch keine Geräte gefunden. Erst im Reiter „Verbindung“ anmelden; dann erscheinen die Geräte des Gateways hier.</p>
 <?php } else { ?>
 <div class="lb-table-scroll"><table class="lb-table">
-<tr><th>Status</th><th>Aktiv</th><th>Gerät</th><th>Name im Topic</th><th>Ports veröffentlichen</th><th>Befehle für Ports</th></tr>
+<tr><th>Status</th><th>Aktiv</th><th>Gerät</th><th>Name im Topic</th><th>Ports veröffentlichen</th><th>PoE-Befehle für Ports</th><th>Ports ein/aus für Ports</th></tr>
 <?php
 foreach ($modell['geraete'] as $g) {
     $mac = $g['mac'];
@@ -165,15 +166,16 @@ foreach ($modell['geraete'] as $g) {
 <tr>
  <td><span class="uni-led uni-led-<?= $led ?>" title="<?= h($tip) ?>"></span> <span class="hinweis"><?= h($tip) ?></span></td>
  <td><?= schalter('geraete[' . $mac . '][aktiv]', !empty($c['aktiv'])) ?></td>
- <td><b><?= h($g['name']) ?></b><br><span class="hinweis"><?= h($g['modell']) ?> · <?= h(['gateway' => 'Gateway', 'switch' => 'Switch', 'ap' => 'Access Point'][$g['typ']] ?? 'Gerät') ?><?= $g['ports'] ? ' · ' . count($g['ports']) . ' Ports' : '' ?></span></td>
+ <td><b><?= h($g['name']) ?></b><br><span class="hinweis"><?= h($g['modell_name'] ?? $g['modell']) ?> · <?= h(['gateway' => 'Gateway', 'switch' => 'Switch', 'ap' => 'Access Point'][$g['typ']] ?? 'Gerät') ?><?= $g['ports'] ? ' · ' . count($g['ports']) . ' Ports' : '' ?></span></td>
  <td><input class="lb-input uni-mittel" type="text" name="geraete[<?= $i ?>][name]" value="<?= h($c['name']) ?>" placeholder="<?= h($name ?? Util::name($g['name'])) ?>"></td>
  <td><?php if ($g['ports']) { ?><input class="lb-input uni-mittel" type="text" name="geraete[<?= $i ?>][ports]" value="<?= h($c['ports']) ?>" placeholder="alle"><?php } else { echo '<span class="hinweis">-</span>'; } ?></td>
  <td><?php if ($hatPoe) { ?><input class="lb-input uni-mittel" type="text" name="geraete[<?= $i ?>][befehle_ports]" value="<?= h($c['befehle_ports']) ?>" placeholder="gesperrt"><?php } else { echo '<span class="hinweis">-</span>'; } ?></td>
+ <td><?php if ($g['ports']) { ?><input class="lb-input uni-mittel" type="text" name="geraete[<?= $i ?>][schalt_ports]" value="<?= h($c['schalt_ports']) ?>" placeholder="gesperrt"><?php } else { echo '<span class="hinweis">-</span>'; } ?></td>
 </tr>
 <?php } ?>
 </table></div>
-<p class="hinweis">Der Name steckt im Topic (<code>unifi/&lt;name&gt;/…</code>; nur a–z, 0–9, _ und -), leer = Name aus dem Gateway. <b>Ports veröffentlichen:</b> z. B. <code>1-8, 22</code>, leer = alle Ports (je Port gibt es bis zu 6 Topics: bei vielen Ports lohnt eine Auswahl). <b>Befehle für Ports:</b> nur die hier genannten PoE-Ports lassen sich aus Loxone schalten (z. B. <code>4, 6, 11-13</code>), leer = gesperrt. Uplink-Ports und Ports ohne PoE werden nie geschaltet.</p>
-<p class="hinweis"><b>Achtung:</b> PoE aus oder Neustart an einem Port schaltet das angeschlossene Gerät (Access Point, Kamera, Telefon) stromlos. Geben Sie keine Ports frei, an denen ein Gerät hängt, ohne das Sie das Netz nicht mehr erreichen.</p>
+<p class="hinweis">Der Name steckt im Topic (<code>unifi/&lt;name&gt;/…</code>; nur a–z, 0–9, _ und -), leer = Name aus dem Gateway. <b>Ports veröffentlichen:</b> z. B. <code>1-8, 22</code>, leer = alle Ports (je Port gibt es bis zu 7 Topics: bei vielen Ports lohnt eine Auswahl). <b>PoE-Befehle für Ports:</b> nur die hier genannten PoE-Ports lassen sich aus Loxone mit <code>poe</code> und <code>neustart</code> schalten (z. B. <code>4, 6, 11-13</code>), leer = gesperrt. <b>Ports ein/aus für Ports:</b> nur die hier genannten Ports lassen sich mit <code>aktiv</code> ganz abschalten und wieder einschalten (nicht nur PoE), leer = gesperrt. Uplink-Ports werden nie geschaltet.</p>
+<p class="hinweis"><b>Achtung:</b> PoE aus oder Neustart an einem Port schaltet das angeschlossene Gerät (Access Point, Kamera, Telefon) stromlos, ein abgeschalteter Port trennt jedes angeschlossene Gerät vom Netz. Geben Sie keine Ports frei, an denen ein Gerät hängt, ohne das Sie das Netz nicht mehr erreichen (auch nicht den LoxBerry oder den Miniserver).</p>
 <div class="uni-opt"><input type="hidden" name="verkehr_gesendet" value="1"><?= schalter('verkehr', !empty($uni['verkehr']), 'Datenraten je Port veröffentlichen (<code>rx_bps</code>, <code>tx_bps</code>; ändern sich ständig und erzeugen viele Meldungen)') ?></div>
 <p><button class="lb-btn lb-btn-primary" type="submit" name="aktion" value="speichern">Speichern</button></p>
 <?php } ?>
@@ -189,7 +191,7 @@ foreach ($modell['geraete'] as $g) {
 <?php
 foreach ($modell['geraete'] as $g) {
     $typText = ['gateway' => 'Gateway', 'switch' => 'Switch', 'ap' => 'Access Point'][$g['typ']] ?? 'Gerät';
-    echo '<div class="lb-card"><h4><span class="uni-led uni-led-' . ($g['online'] ? 'ok' : 'fehler') . '"></span> ' . h($g['name']) . ' <span class="hinweis">' . h($g['modell']) . ' · ' . h($typText) . ($g['online'] ? '' : ' · nicht erreichbar') . '</span></h4>';
+    echo '<div class="lb-card"><h4><span class="uni-led uni-led-' . ($g['online'] ? 'ok' : 'fehler') . '"></span> ' . h($g['name']) . ' <span class="hinweis">' . h($g['modell_name'] ?? $g['modell']) . ' · ' . h($typText) . ($g['online'] ? '' : ' · nicht erreichbar') . '</span></h4>';
     if ($g['poe_max_w'] > 0) {
         $pr = (int)round(100 * $g['poe_gesamt_w'] / $g['poe_max_w']);
         echo '<p>PoE: <b>' . h(UniDaten::zahl($g['poe_gesamt_w'], 1)) . ' W</b> von ' . h(UniDaten::zahl($g['poe_max_w'], 0)) . ' W (' . $pr . ' %)</p>';
@@ -228,6 +230,84 @@ foreach ($modell['geraete'] as $g) {
 }
 ?>
 <?php } ?>
+
+<?php } elseif ($tab === 'clients') { ?>
+<?php
+$alleZeigen = ($_GET['alle'] ?? '') === '1';
+$cl = $modell === null ? [] : UniDaten::clientAnzeige($modell, $bekannteClients);
+foreach (array_keys($uni['clients']) as $mac) {               // ausgewählte Clients, die das Gateway gar nicht (mehr) kennt, bleiben sichtbar
+    if (!isset($cl[$mac])) {
+        $cl[$mac] = ['name' => '', 'ip' => '', 'online' => false, 'kabel' => false, 'ort' => '', 'zuletzt' => 0];
+    }
+}
+$cNamen = UniConfig::clientNamen($uni, $cl);
+$anzeigeName = function (string $mac, array $c): string {
+    return $c['name'] !== '' ? $c['name'] : $mac;
+};
+$offlineBekannt = 0;
+$zeilen = [];
+foreach ($cl as $mac => $c) {
+    $gewaehlt = isset($uni['clients'][$mac]);
+    if (!$c['online'] && !$gewaehlt) {
+        $offlineBekannt++;
+        if (!$alleZeigen) {
+            continue;
+        }
+    }
+    $zeilen[$mac] = $c;
+}
+uksort($zeilen, function ($a, $b) use ($zeilen, $anzeigeName) {
+    $x = $zeilen[$a];
+    $y = $zeilen[$b];
+    if ($x['online'] !== $y['online']) {
+        return $x['online'] ? -1 : 1;
+    }
+    if (!$x['online'] && $x['zuletzt'] !== $y['zuletzt']) {
+        return $y['zuletzt'] <=> $x['zuletzt'];                 // zuletzt gesehene zuerst
+    }
+    return strcasecmp($anzeigeName($a, $x), $anzeigeName($b, $y));
+});
+?>
+<form method="post" action="<?= $basis ?>clients<?= $alleZeigen ? '&amp;alle=1' : '' ?>">
+<input type="hidden" name="token" value="<?= h($token) ?>">
+<div class="lb-card">
+<h3>Clients</h3>
+<?php if ($modell === null) { ?>
+<p class="hinweis"><?= $laeuft ? 'Noch keine Daten vom Gateway (' . h($status['anmeldung']['text'] ?? 'Anmeldung läuft') . ').' : 'Der Dienst läuft nicht.' ?></p>
+<?php } else { ?>
+<p class="hinweis">Alle Clients des Gateways mit IP-Adresse. Bei den hier gewählten Clients meldet das Plugin den <b>Online-Status</b> (1 = verbunden, 0 = nicht verbunden) unter <code>unifi/client/&lt;name&gt;/online</code> an MQTT; für den Miniserver ist das ein virtueller Eingang je Client.
+Die Liste zeigt die gerade verbundenen und die gewählten Clients.
+<?php if ($alleZeigen) { ?>Es sind auch alle weiteren bekannten Clients aufgeführt (<a href="<?= $basis ?>clients">nur verbundene und gewählte anzeigen</a>).
+<?php } elseif ($offlineBekannt > 0) { ?><?= (int)$offlineBekannt ?> weitere, derzeit nicht verbundene Clients sind ausgeblendet (<a href="<?= $basis ?>clients&amp;alle=1">alle bekannten anzeigen</a>).<?php } ?></p>
+<div class="lb-table-scroll"><table class="lb-table">
+<tr><th>Online-Status per MQTT</th><th>Name im Topic</th><th>Client</th><th>IP-Adresse</th><th>Verbindung</th><th>Status</th></tr>
+<?php foreach ($zeilen as $mac => $c) {
+    $gewaehlt = isset($uni['clients'][$mac]);
+    $macText = implode(':', str_split($mac, 2));
+    $vorschlag = $gewaehlt ? ($uni['clients'][$mac]['name'] !== '' ? $uni['clients'][$mac]['name'] : $cNamen[$mac]) : ($c['name'] !== '' ? Util::name($c['name']) : 'client_' . substr($mac, -6));
+    if ($c['online']) {
+        $statusText = '<span class="uni-led uni-led-ok"></span> <span class="hinweis">online</span>';
+    } else {
+        $statusText = '<span class="uni-led uni-led-aus"></span> <span class="hinweis">offline' . ($c['zuletzt'] > 0 ? ', zuletzt ' . h(date('d.m.Y H:i', $c['zuletzt'])) : '') . '</span>';
+    }
+    ?>
+<tr>
+ <td><input type="hidden" name="clients[<?= h($mac) ?>][da]" value="1"><?= schalter('clients[' . $mac . '][aktiv]', $gewaehlt) ?></td>
+ <td><input class="lb-input uni-mittel" type="text" name="clients[<?= h($mac) ?>][name]" value="<?= h($vorschlag) ?>"></td>
+ <td><b><?= h($c['name'] !== '' ? $c['name'] : '(ohne Namen)') ?></b><br><span class="hinweis"><?= h($macText) ?></span></td>
+ <td><?= $c['ip'] !== '' ? h($c['ip']) : '<span class="hinweis">-</span>' ?></td>
+ <td><?= $c['ort'] !== '' ? h($c['ort']) : '<span class="hinweis">' . ($c['online'] ? ($c['kabel'] ? 'Kabel' : 'WLAN') : '-') . '</span>' ?></td>
+ <td><?= $statusText ?></td>
+</tr>
+<?php } ?>
+</table></div>
+<p class="hinweis"><b>Name im Topic:</b> nur a–z, 0–9, _ und -; der Vorschlag kommt aus dem Namen im Gateway und wird mit dem Speichern festgeschrieben (ändert sich der Name später im Gateway, bleibt das Topic gleich). Doppelte Namen bekommen eine Nummer.
+Gespeichert werden nur die gewählten Clients (MAC-Adresse und Name im Topic); Namen und IP-Adressen aller anderen Clients bleiben im Arbeitsspeicher und gehen nie nach MQTT. Ein Client, der nicht verbunden ist, wird mit 0 gemeldet.
+Das Gateway entfernt WLAN-Clients erst nach einiger Zeit aus seiner Liste, der Wechsel auf 0 kann deshalb einige Minuten dauern.</p>
+<p><button class="lb-btn lb-btn-primary" type="submit" name="aktion" value="speichern">Speichern</button></p>
+<?php } ?>
+</div>
+</form>
 
 <?php } elseif ($tab === 'mqtt') {
     $own = UniConfig::ownBroker($uni);
@@ -281,6 +361,7 @@ $zeilen = [
     ['unifi/<gerät>/typ | modell', 'Text', 'Art (gateway, switch, ap) und Modell'],
     ['unifi/<gerät>/poe_gesamt_w | poe_max_w', 'W', 'Switch/Gateway mit PoE: aktuelle Gesamtleistung der Ports und PoE-Budget'],
     ['unifi/<gerät>/port<nr>/up', '0/1', 'Link am Port'],
+    ['unifi/<gerät>/port<nr>/aktiv', '0/1', 'Port eingeschaltet (0 = abgeschaltet, auch durch den Befehl aktiv)'],
     ['unifi/<gerät>/port<nr>/speed_mbit', 'Mbit/s', 'ausgehandelte Geschwindigkeit (0 ohne Link)'],
     ['unifi/<gerät>/port<nr>/clients', '-', 'Anzahl Clients, die an diesem Port hängen (Kabel)'],
     ['unifi/<gerät>/port<nr>/poe_w | poe_ma', 'W, mA', 'PoE-Leistung und -Strom am Port (nur PoE-Ports; 0 ohne Last)'],
@@ -288,6 +369,7 @@ $zeilen = [
     ['unifi/<gerät>/port<nr>/rx_bps | tx_bps', 'bit/s', 'Datenrate (nur mit der Option „Datenraten veröffentlichen“)'],
     ['unifi/netz/clients | clients_kabel | clients_wlan', '-', 'Clients im ganzen Netz'],
     ['unifi/netz/poe_gesamt_w', 'W', 'PoE-Leistung aller Geräte zusammen'],
+    ['unifi/client/<name>/online', '0/1', 'Online-Status eines im Reiter „Clients“ gewählten Clients (1 = verbunden)'],
     ['unifi/status/ok', '0/1', 'Anmeldung und letzte Abfrage in Ordnung (No Cache)'],
     ['unifi/status/zaehler', '0–999', 'Lebenszeichen, zählt alle 10 s (No Cache)'],
     ['unifi/status/ts', 's', 'Unix-Zeitstempel des letzten Lebenszeichens'],
@@ -300,18 +382,18 @@ foreach ($zeilen as $w) {
 <p class="hinweis">Beim Absturz des Dienstes setzt der Broker unifi/status/ok per Letzter-Wille-Nachricht auf 0 (retained). Die Namen der Clients je Port stehen nur in der Weboberfläche (Reiter „Netzwerk“), nicht in MQTT.</p>
 
 <h3>Befehle aus Loxone</h3>
-<p>Gesperrt, bis die Ports je Gerät im Reiter „Geräte“ freigegeben sind. Virtueller Ausgang: Adresse <code>/dev/udp/&lt;LoxBerry-IP&gt;/<?= (int)$udp ?></code>,
+<p>Gesperrt, bis die Ports je Gerät im Reiter „Geräte“ freigegeben sind (<code>poe</code> und <code>neustart</code> über „PoE-Befehle“, <code>aktiv</code> über „Ports ein/aus“). Virtueller Ausgang: Adresse <code>/dev/udp/&lt;LoxBerry-IP&gt;/<?= (int)$udp ?></code>,
 Befehl bei EIN <code>publish unifi/befehl/&lt;gerät&gt;/port&lt;nr&gt;/&lt;befehl&gt; &lt;wert&gt;</code> (ohne HTTP-Header/Body). Die Quittung steht unter <code>…/&lt;befehl&gt;/quittung</code>:
 <code>angenommen</code>, dann <code>ausgefuehrt</code> oder <code>abgelehnt: &lt;grund&gt;</code> (nie retained). Höchstens ein Befehl je Sekunde. <code>ausgefuehrt</code> heißt „vom Gateway angenommen“: PoE aus wirkt nach etwa 12 Sekunden, nach PoE ein liefert der Port erst nach bis zu etwa einer Minute wieder Strom (<code>port&lt;nr&gt;/poe_an</code> zeigt es).</p>
 <div class="lb-table-scroll"><table class="lb-table">
 <tr><th>Topic</th><th>Wert</th><th>Wirkung</th></tr>
 <?php
 foreach (UniBefehle::LISTE as $k => [, $text]) {
-    echo '<tr><td>unifi/befehl/' . h($beispiel) . '/port&lt;nr&gt;/' . h($k) . '</td><td>' . ($k === 'poe' ? '1 | 0' : '1') . '</td><td>' . h($text) . '</td></tr>';
+    echo '<tr><td>unifi/befehl/' . h($beispiel) . '/port&lt;nr&gt;/' . h($k) . '</td><td>' . ($k === 'neustart' ? '1' : '1 | 0') . '</td><td>' . h($text) . '</td></tr>';
 }
 ?>
 </table></div>
-<p class="hinweis">Nie vorgesehen: Ports abschalten, VLANs und Profile ändern, Geräte neu starten oder zurücksetzen, Firmware, Konten. Uplink-Ports und Ports ohne PoE werden nie geschaltet.</p>
+<p class="hinweis"><code>aktiv</code> 0 schaltet den Port ganz ab (so, als würden Sie ihn in der Oberfläche des Gateways deaktivieren; nimmt das Gateway die Änderung nicht an, lautet die Quittung „abgelehnt“), 1 stellt die vorherige Einstellung wieder her; <code>port&lt;nr&gt;/aktiv</code> zeigt den Zustand. Nie vorgesehen: VLANs und Profile ändern, Geräte neu starten oder zurücksetzen, Firmware, Konten. Uplink-Ports werden nie geschaltet, PoE-Befehle gibt es nur an Ports mit PoE.</p>
 
 <?php } elseif ($tab === 'test') { ?>
 <h3>Test</h3>

@@ -5,12 +5,15 @@
  *
  * Die Geraete kommen vom Gateway (stat/device); hier stehen nur die Einstellungen je Geraet, gespeichert unter der MAC-Adresse:
  * aktiv, Name im Topic, welche Ports veroeffentlicht werden und fuer welche Ports Befehle freigegeben sind (ab Werk keine).
+ *
+ * Clients: Nur die vom Benutzer ausdruecklich ausgewaehlten Clients stehen in der Konfiguration (MAC => Name im Topic), damit ihr Online-Status
+ * auch dann gemeldet wird, wenn sie gerade nicht verbunden sind. Die Liste aller Clients mit IP gibt es nur in der Weboberflaeche (RAM).
  */
 final class UniConfig
 {
     public static function defaultGeraet(): array
     {
-        return ['aktiv' => true, 'name' => '', 'ports' => '', 'befehle_ports' => ''];
+        return ['aktiv' => true, 'name' => '', 'ports' => '', 'befehle_ports' => '', 'schalt_ports' => ''];
     }
 
     public static function defaults(): array
@@ -21,6 +24,7 @@ final class UniConfig
             'verkehr' => false,          // Datenraten (rx_bps, tx_bps) je Port veroeffentlichen
             'mqtt' => ['eigener_broker' => false, 'host' => '', 'port' => 1883, 'benutzer' => '', 'passwort' => ''],
             'geraete' => [],             // MAC => Einstellungen
+            'clients' => [],             // MAC => ['name' => Name im Topic ('' = Name aus dem Gateway)]: Clients, deren Online-Status per MQTT gemeldet wird
         ];
     }
 
@@ -110,9 +114,17 @@ final class UniConfig
             }
             $x = array_merge(self::defaultGeraet(), $x);
             $g[$mac] = ['aktiv' => !empty($x['aktiv']), 'name' => Util::name((string)$x['name']), 'ports' => self::cleanPortText((string)$x['ports']),
-                'befehle_ports' => self::cleanPortText((string)$x['befehle_ports'])];
+                'befehle_ports' => self::cleanPortText((string)$x['befehle_ports']), 'schalt_ports' => self::cleanPortText((string)$x['schalt_ports'])];
         }
         $out['geraete'] = $g;
+        $cl = [];
+        foreach (is_array($c['clients'] ?? null) ? $c['clients'] : [] as $mac => $x) {
+            $mac = self::cleanMac((string)$mac);
+            if ($mac !== '' && is_array($x)) {
+                $cl[$mac] = ['name' => Util::name((string)($x['name'] ?? ''))];
+            }
+        }
+        $out['clients'] = $cl;
         return $out;
     }
 
@@ -161,8 +173,36 @@ final class UniConfig
                     $names[$name] = true;
                 }
                 $new['geraete'][$mac] = ['aktiv' => !empty($p['aktiv']), 'name' => $name, 'ports' => self::cleanPortText((string)($p['ports'] ?? '')),
-                    'befehle_ports' => self::cleanPortText((string)($p['befehle_ports'] ?? ''))];
+                    'befehle_ports' => self::cleanPortText((string)($p['befehle_ports'] ?? '')), 'schalt_ports' => self::cleanPortText((string)($p['schalt_ports'] ?? ''))];
             }
+        }
+        if (is_array($post['clients'] ?? null)) {
+            // Je Zeile gibt es ein verstecktes Feld "da": so ist auch eine abgewaehlte Zeile erkennbar. Nicht gesendete Clients bleiben unveraendert.
+            $cl = is_array($old['clients'] ?? null) ? $old['clients'] : [];
+            foreach ($post['clients'] as $mac => $p) {
+                $mac = self::cleanMac((string)$mac);
+                if ($mac === '' || !is_array($p)) {
+                    continue;
+                }
+                if (empty($p['aktiv'])) {
+                    unset($cl[$mac]);
+                } else {
+                    $cl[$mac] = ['name' => Util::name((string)($p['name'] ?? ''))];
+                }
+            }
+            $used = [];
+            foreach ($cl as $mac => $x) {              // ausdrueckliche Namen eindeutig machen
+                $name = (string)$x['name'];
+                if ($name !== '') {
+                    $base = $name;
+                    for ($n = 2; isset($used[$name]); $n++) {
+                        $name = $base . '_' . $n;
+                    }
+                    $used[$name] = true;
+                    $cl[$mac]['name'] = $name;
+                }
+            }
+            $new['clients'] = array_slice($cl, 0, 500, true);
         }
         if (is_array($post['mqtt'] ?? null)) {
             $m = $post['mqtt'];
@@ -204,6 +244,34 @@ final class UniConfig
             }
             $used[$name] = true;
             $out[$mac] = $name;
+        }
+        return $out;
+    }
+
+    /**
+     * Namen der ausgewaehlten Clients im Topic (unifi/client/<name>/online): gewaehlter Name, sonst Name aus dem Gateway, sonst client_<letzte 6 Hexziffern der MAC>;
+     * doppelte Namen bekommen eine Nummer.
+     * @param array<string,array{name:string}> $anzeige Ergebnis von UniDaten::clientAnzeige()
+     * @return array<string,string> MAC => Name
+     */
+    public static function clientNamen(array $cfg, array $anzeige): array
+    {
+        $out = [];
+        $used = [];
+        foreach (is_array($cfg['clients'] ?? null) ? $cfg['clients'] : [] as $mac => $x) {
+            $name = Util::name((string)($x['name'] ?? ''));
+            if ($name === '') {
+                $name = Util::name((string)($anzeige[$mac]['name'] ?? ''));
+            }
+            if ($name === '') {
+                $name = 'client_' . substr((string)$mac, -6);
+            }
+            $base = $name;
+            for ($n = 2; isset($used[$name]); $n++) {
+                $name = $base . '_' . $n;
+            }
+            $used[$name] = true;
+            $out[(string)$mac] = $name;
         }
         return $out;
     }

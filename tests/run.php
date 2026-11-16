@@ -90,13 +90,13 @@ check('Konfiguration: Zugang, Site bereinigt, Abstand mindestens 10', [$p1['cont
 $p2 = UniConfig::fromPost($p1, ['controller' => ['adresse' => 'gw.lan', 'benutzer' => 'lesen', 'passwort' => '']]);
 check('Konfiguration: leeres Passwortfeld behaelt das Passwort, Haken fehlt = aus', [$p2['controller']['passwort'], $p2['controller']['tls_pruefen']], ['geheimpw', false]);
 check('Konfiguration: verbindungVollstaendig', [UniConfig::verbindungVollstaendig($c0), UniConfig::verbindungVollstaendig($p2)], [false, true]);
-$p3 = UniConfig::fromPost($p2, ['geraete' => ['02:00:00:00:00:02' => ['aktiv' => '1', 'name' => 'Switch Küche!', 'ports' => '1-8', 'befehle_ports' => '4;6'],
+$p3 = UniConfig::fromPost($p2, ['geraete' => ['02:00:00:00:00:02' => ['aktiv' => '1', 'name' => 'Switch Küche!', 'ports' => '1-8', 'befehle_ports' => '4;6', 'schalt_ports' => '9 ; 15'],
     '02:00:00:00:00:03' => ['aktiv' => '1', 'name' => 'Switch Küche!'], 'zz' => ['aktiv' => '1'], '02:00:00:00:00:04' => ['aktiv' => '1', 'name' => '']]]);
 check('Konfiguration: Namen ASCII ohne Leerzeichen, doppelte nummeriert, ungueltige MAC fehlt, Portlisten bereinigt',
-    [$p3['geraete']['020000000002']['name'], $p3['geraete']['020000000003']['name'], isset($p3['geraete']['zz']), $p3['geraete']['020000000002']['ports'], $p3['geraete']['020000000002']['befehle_ports']],
-    ['switch_kueche', 'switch_kueche_2', false, '1-8', '4, 6']);
+    [$p3['geraete']['020000000002']['name'], $p3['geraete']['020000000003']['name'], isset($p3['geraete']['zz']), $p3['geraete']['020000000002']['ports'], $p3['geraete']['020000000002']['befehle_ports'], $p3['geraete']['020000000002']['schalt_ports']],
+    ['switch_kueche', 'switch_kueche_2', false, '1-8', '4, 6', '9, 15']);
 check('Konfiguration: leerer Name bleibt leer (Gateway-Name gilt, nicht fest gespeichert)', $p3['geraete']['020000000004']['name'], '');
-check('Konfiguration: Befehle ab Werk gesperrt (leer)', UniConfig::defaultGeraet()['befehle_ports'], '');
+check('Konfiguration: Befehle und Ein/Aus ab Werk gesperrt (leer)', [UniConfig::defaultGeraet()['befehle_ports'], UniConfig::defaultGeraet()['schalt_ports']], ['', '']);
 $gef = [['mac' => '020000000001', 'name' => 'Gateway', 'typ' => 'gateway'], ['mac' => '020000000002', 'name' => 'Switch Keller', 'typ' => 'switch'], ['mac' => '020000000003', 'name' => 'Switch Keller', 'typ' => 'switch'],
     ['mac' => '020000000004', 'name' => '', 'typ' => 'ap']];
 check('Namen: gewaehlter Name, sonst Gateway-Name, sonst Typ+Nummer, doppelte nummeriert', array_values(UniConfig::namen($p3, $gef)), ['gateway', 'switch_kueche', 'switch_kueche_2', 'ap4']);
@@ -141,24 +141,65 @@ $sta2 = $sta;
 $sta2[] = ['mac' => '02:00:00:00:ff:ff', 'is_wired' => true, 'sw_mac' => '02:00:00:00:77:77', 'sw_port' => 3];
 $m2 = UniDaten::modell($devs, $sta2);
 check('Modell: Client an unbekanntem Switch zaehlt mit, haengt aber an keinem Port', [$m2['clients']['kabel'], array_sum(array_map(fn($p) => count($p['clients']), $m2['geraete'][1]['ports']))], [12, 11]);
-check('Modell: leere Eingabe', UniDaten::modell([], []), ['geraete' => [], 'clients' => ['gesamt' => 0, 'kabel' => 0, 'wlan' => 0], 'poe_gesamt_w' => 0.0]);
+check('Modell: leere Eingabe', UniDaten::modell([], []), ['geraete' => [], 'clients' => ['gesamt' => 0, 'kabel' => 0, 'wlan' => 0], 'poe_gesamt_w' => 0.0, 'client_liste' => []]);
 check('Zahl: ohne unnoetige Nullen', [UniDaten::zahl(31.07), UniDaten::zahl(220.0), UniDaten::zahl(116.69, 1), UniDaten::zahl(0), UniDaten::zahl(6.5)], ['31.07', '220', '116.7', '0', '6.5']);
 $w = UniDaten::werte($sw, null, false);
 check('Werte Switch: online, Typ, Modell, Clients, PoE-Summe und Budget', [$w['online'], $w['typ'], $w['modell'], $w['clients'], $w['poe_gesamt_w'], $w['poe_max_w']], ['1', 'switch', 'US24P250', '11', '31.07', '220']);
 check('Werte Switch: Port 4 (PoE, AP) und Port 18 (3 Clients)', [$w['port4/up'], $w['port4/speed_mbit'], $w['port4/poe_an'], $w['port4/poe_w'], $w['port4/poe_ma'], $w['port18/clients'], $w['port18/speed_mbit']], ['1', '1000', '1', '6.19', '116.7', '3', '1000']);
 check('Werte Switch: Port ohne Link und ohne Last', [$w['port5/up'], $w['port5/speed_mbit'], $w['port5/poe_an'], $w['port5/poe_w']], ['0', '0', '0', '0']);
 check('Werte Switch: SFP-Ports ohne PoE-Topics, ohne Datenraten', [isset($w['port25/up']), isset($w['port25/poe_w']), isset($w['port18/rx_bps'])], [true, false, false]);
-check('Werte Switch: 26 Ports mal 3 plus 24 PoE-Ports mal 3 plus 6 Geraetewerte', count($w), 26 * 3 + 24 * 3 + 6);
+check('Werte Switch: 26 Ports mal 4 (up, aktiv, speed, clients) plus 24 PoE-Ports mal 3 plus 6 Geraetewerte', count($w), 26 * 4 + 24 * 3 + 6);
 $w2 = UniDaten::werte($sw, null, true);
 check('Werte Switch: Datenraten in bit/s (Bytes je Sekunde mal 8)', [$w2['port18/rx_bps'], $w2['port18/tx_bps']], ['4000000', '1000000']);
 $w3 = UniDaten::werte($sw, [1, 2, 18], false);
-check('Werte Switch: Portauswahl', [isset($w3['port1/up']), isset($w3['port3/up']), isset($w3['port18/clients']), count($w3)], [true, false, true, 3 * 3 + 3 * 3 + 6]);
+check('Werte Switch: Portauswahl', [isset($w3['port1/up']), isset($w3['port3/up']), isset($w3['port18/clients']), count($w3)], [true, false, true, 3 * 4 + 3 * 3 + 6]);
 $wa = UniDaten::werte($ap1, null, false);
 check('Werte Access Point: Clients, Gaeste, Baender, keine Port- und PoE-Werte', [$wa['clients'], $wa['clients_gast'], $wa['clients_2g'], $wa['clients_5g'], isset($wa['clients_6g']), isset($wa['poe_gesamt_w']), count(array_filter(array_keys($wa), fn($k) => str_contains($k, 'port')))],
     ['6', '1', '4', '2', false, false, 0]);
 $wg = UniDaten::werte($byName['Gateway'], null, false);
 check('Werte Gateway: Port 4 mit PoE ohne Last = 0, Budget 30 W', [$wg['port4/poe_an'], $wg['port4/poe_w'], $wg['poe_max_w'], $wg['clients']], ['0', '0', '30', '19']);
+check('Werte: Port-Zustand aktiv (1) und abgeschalteter Port (0)', [$w['port4/aktiv'], UniDaten::werte(['ports' => [7 => ['up' => false, 'aktiv' => false, 'speed' => 0, 'clients' => [], 'poe' => false]]] + $sw, null, false)['port7/aktiv']],
+    ['1', '0']);
+$mDis = UniDaten::modell([['mac' => '02:00:00:00:00:09', 'type' => 'usw', 'state' => 1, 'port_table' => [['port_idx' => 1, 'forward' => 'disabled', 'up' => false], ['port_idx' => 2, 'enable' => false, 'forward' => 'all'], ['port_idx' => 3, 'forward' => 'all', 'enable' => true], ['port_idx' => 4]]]], []);
+check('Modell: aktiv = nicht "disabled" und nicht enable=false', array_map(fn($p) => $p['aktiv'], $mDis['geraete'][0]['ports']), [1 => false, 2 => false, 3 => true, 4 => true]);
 check('Netzwerte', UniDaten::netzWerte($m), ['clients' => '19', 'clients_kabel' => '11', 'clients_wlan' => '8', 'poe_gesamt_w' => '31.07']);
+// ---------------------------------------------------------------- Unit: Clients (Liste, Online-Status per MQTT)
+$cliste = $m['client_liste'];
+$cMac = [];
+foreach ($cliste as $c) {
+    $cMac[$c['mac']] = $c;
+}
+check('Clients: Liste aller verbundenen (19) mit Ort bei Kabel und WLAN', [count($cliste), $cMac['020000001001']['ort'], $cMac['020000001001']['kabel'], $cMac['020000002001']['ort'], $cMac['020000002001']['kabel'], $cMac['020000001003']['ip']],
+    [19, 'Switch Keller · Port 1', true, 'AP Wohnzimmer · 2,4 GHz · Heim', false, '192.0.2.13']);
+$bk = UniDaten::bekannte(fx_bekannte());
+$bkMac = [];
+foreach ($bk as $b) {
+    $bkMac[$b['mac']] = $b;
+}
+check('Clients: bekannte (22) mit IP, auch fester IP, und zuletzt gesehen', [count($bk), $bkMac['020000003001']['ip'], $bkMac['020000003001']['zuletzt'], $bkMac['020000003002']['ip'], $bkMac['020000003002']['name'], $bkMac['020000003003']['ip'], $bkMac['020000003001']['kabel']],
+    [22, '192.0.2.201', 1699900000, '192.0.2.202', 'handy-gast', '', true]);
+$an = UniDaten::clientAnzeige($m, $bk);
+check('Clients: zusammengefuehrt (22), 19 online und 3 offline, Namen (Name, Hostname, sonst leer)', [count($an), count(array_filter($an, fn($c) => $c['online'])), $an['020000003001']['online'], $an['020000003001']['name'], $an['020000003001']['zuletzt'],
+    $an['020000001003']['name'], $an['020000001001']['name'], $an['020000001002']['name'], $an['020000001002']['ip'], $an['020000003003']['name'], $an['020000001001']['ort']],
+    [22, 19, false, 'Alter Drucker', 1699900000, 'Kabel-Client 3', 'host1', '', '192.0.2.12', '', 'Switch Keller · Port 1']);
+check('Clients: ohne Liste der bekannten nur die verbundenen', count(UniDaten::clientAnzeige($m, [])), 19);
+$pc = UniConfig::fromPost(UniConfig::defaults(), ['clients' => ['02:00:00:00:10:03' => ['da' => '1', 'aktiv' => '1', 'name' => 'Küche Licht'], '020000001002' => ['da' => '1', 'aktiv' => '1', 'name' => ''],
+    'zz' => ['aktiv' => '1'], '02:00:00:00:30:01' => ['da' => '1', 'aktiv' => '1', 'name' => 'Küche Licht'], '020000001001' => ['da' => '1']]]);
+check('Konfiguration Clients: Auswahl gespeichert, Namen ASCII und eindeutig, ungueltige MAC fehlt, nicht gewaehlte fehlen',
+    $pc['clients'], ['020000001003' => ['name' => 'kueche_licht'], '020000001002' => ['name' => ''], '020000003001' => ['name' => 'kueche_licht_2']]);
+$pc2 = UniConfig::fromPost($pc, ['clients' => ['020000001002' => ['da' => '1']], 'verkehr_gesendet' => '1']);
+check('Konfiguration Clients: abgewaehlte Zeile wird entfernt, nicht gesendete bleiben', array_keys($pc2['clients']), ['020000001003', '020000003001']);
+check('Konfiguration Clients: Beitrag ohne Clients aendert nichts, Standard leer', [UniConfig::fromPost($pc, ['verkehr_gesendet' => '1'])['clients'] === $pc['clients'], UniConfig::defaults()['clients']], [true, []]);
+file_put_contents("$dir/c2.json", json_encode(['clients' => ['02:00:00:00:10:03' => ['name' => 'ä ö'], 'zz' => ['name' => 'x'], '02:00:00:00:10:04' => 'kaputt', '020000001005' => []]]));
+check('Konfiguration laden: Clients bereinigt', UniConfig::load("$dir/c2.json")['clients'], ['020000001003' => ['name' => 'ae_oe'], '020000001005' => ['name' => '']]);
+$cfgCl = ['clients' => ['020000001003' => ['name' => ''], '020000001002' => ['name' => ''], '020000003001' => ['name' => 'Drucker'], '020000003003' => ['name' => ''], '020000009999' => ['name' => ''], '020000001001' => ['name' => 'drucker']]];
+$cn = UniConfig::clientNamen($cfgCl, $an);
+check('Clients: Name im Topic (gewaehlt, sonst Gateway-Name, sonst client_<MAC-Ende>), doppelte nummeriert', array_values($cn),
+    ['kabel-client_3', 'client_001002', 'drucker', 'client_003003', 'client_009999', 'drucker_2']);
+check('Clients: MQTT-Werte nur Online-Status (1 verbunden, 0 sonst, auch unbekannte)', UniDaten::clientWerte($an, $cn),
+    ['kabel-client_3/online' => '1', 'client_001002/online' => '1', 'drucker/online' => '0', 'client_003003/online' => '0', 'client_009999/online' => '0', 'drucker_2/online' => '1']);
+check('Klarname zum Modellcode (unbekannte Codes unveraendert, MQTT behaelt den Code)', [UniDaten::klarname('U7PG2'), UniDaten::klarname('UAP6MP'), UniDaten::klarname('us24p250'), UniDaten::klarname('UDMA6A8'), UniDaten::klarname('XYZ-1'), UniDaten::klarname(''),
+    $byName['AP Wohnzimmer']['modell_name'], $byName['AP Wohnzimmer']['modell'], UniDaten::werte($byName['AP Wohnzimmer'], null, false)['modell']], ['UAP-AC-Pro', 'U6-Pro', 'US-24-250W', 'UCG-Fiber', 'XYZ-1', '', 'U6-Pro', 'UAP6MP', 'UAP6MP']);
 check('Geraeteart aus dem Typ', [UniDaten::typ('udm'), UniDaten::typ('UGW'), UniDaten::typ('usw'), UniDaten::typ('uap'), UniDaten::typ('ubb'), UniDaten::typ('xyz')], ['gateway', 'gateway', 'switch', 'ap', 'ap', 'andere']);
 
 // ---------------------------------------------------------------- Unit: Befehle
@@ -173,6 +214,41 @@ check('Befehle: Uplink und Ports ohne PoE werden nie geschaltet', [$pr($cfgSw, $
 check('Befehle: Neustart nur mit PoE-Last, Ein/Aus auch ohne', [$pr($cfgSw, $sw, 12, 'neustart', '1'), $pr($cfgSw, $sw, 11, 'neustart', '1'), $pr($cfgSw, $sw, 12, 'poe', '0')], ['am Port 12 liegt kein PoE an', null, null]);
 check('Befehle: Geraet unbekannt, offline, Port fehlt', [$pr($cfgSw, null, 11, 'poe', '0'), $pr($cfgSw, array_replace($sw, ['online' => false]), 11, 'poe', '0'), $pr(['befehle_ports' => '99'], $sw, 99, 'poe', '0')],
     ['keine Daten vom Gateway (Gerät unbekannt)', 'das Gerät ist nicht erreichbar', 'das Gerät hat keinen Port 99']);
+
+check('Befehle: aktiv hat eine eigene Freigabeliste (schalt_ports), PoE-Freigabe gilt nicht fuer aktiv', [UniBefehle::freigabeFeld('aktiv'), UniBefehle::freigabeFeld('poe'), $pr($cfgSw, $sw, 11, 'aktiv', '0'),
+    $pr(['schalt_ports' => '11, 25'], $sw, 11, 'poe', '0'), $pr(['schalt_ports' => '11, 25'], $sw, 11, 'aktiv', '0')],
+    ['schalt_ports', 'befehle_ports', 'Ein- und Ausschalten für Port 11 ist gesperrt (im Reiter „Geräte“ freigeben)', 'Befehle für Port 11 sind gesperrt (im Reiter „Geräte“ freigeben)', null]);
+$cfgAk = ['schalt_ports' => '11, 22, 25, 99'];
+check('Befehle aktiv: auch Ports ohne PoE, Uplink nie, Wert nur 0/1', [$pr($cfgAk, $sw, 25, 'aktiv', '0'), $pr($cfgAk, $sw, 22, 'aktiv', '0'), $pr($cfgAk, $sw, 11, 'aktiv', '2'), $pr($cfgAk, $sw, 99, 'aktiv', '1'),
+    $pr($cfgAk, array_replace($sw, ['online' => false]), 11, 'aktiv', '0')], [null, 'Port 22 ist ein Uplink und wird nie geschaltet', 'ungültiger Wert', 'das Gerät hat keinen Port 99', 'das Gerät ist nicht erreichbar']);
+$roh = fx_geraete()[1];
+$ovAn = fn(array $r) => array_values(array_filter($r['overrides'], fn($o) => $o['port_idx'] === 15 || $o['port_idx'] === 16 || $o['port_idx'] === 26));
+$r15 = UniBefehle::overridesAktiv($roh, 15, false, []);
+$v15 = ['forward' => 'all', 'native_networkconf_id' => 'net-1', 'tagged_vlan_mgmt' => 'auto', 'port_security_enabled' => false];
+check('overridesAktiv: Port 15 aus = forward disabled, kein Netz, block_all, Port-Sicherheit; Rest des Eintrags unveraendert, Liste gleich lang, Ausgangswerte gemerkt',
+    [$r15['ok'], $r15['aenderung'], $r15['vorher'], count($r15['overrides']), $ovAn($r15)[0]['forward'], $ovAn($r15)[0]['native_networkconf_id'], $ovAn($r15)[0]['tagged_vlan_mgmt'], $ovAn($r15)[0]['port_security_enabled'],
+        $ovAn($r15)[0]['setting_preference'], $ovAn($r15)[0]['poe_mode']],
+    [true, true, $v15, 24, 'disabled', '', 'block_all', true, 'auto', 'auto']);
+$dis15 = ['port_overrides' => $r15['overrides'], 'port_table' => $roh['port_table']];
+check('overridesAktiv: eine zweite Abschaltung aendert nichts', UniBefehle::overridesAktiv($dis15, 15, false, $v15)['aenderung'], false);
+$ein15 = UniBefehle::overridesAktiv($dis15, 15, true, []);
+check('overridesAktiv: Einschalten ohne Merker: forward all, tagged_vlan_mgmt auto, Port-Sicherheit aus, Netz = haeufigstes der uebrigen Ports', [$ein15['aenderung'], $ovAn($ein15)[0]['forward'], $ovAn($ein15)[0]['tagged_vlan_mgmt'], $ovAn($ein15)[0]['port_security_enabled'], $ovAn($ein15)[0]['native_networkconf_id']],
+    [true, 'all', 'auto', false, 'net-1']);
+$r16 = UniBefehle::overridesAktiv($roh, 16, false, []);
+$dis16 = ['port_overrides' => $r16['overrides'], 'port_table' => $roh['port_table']];
+check('overridesAktiv: Abschalten und Einschalten mit Merker ergibt wieder exakt die urspruengliche Liste (Port 15 und 16), ausgeschlossene Netze bleiben', [UniBefehle::overridesAktiv($dis15, 15, true, $r15['vorher'])['overrides'] === $roh['port_overrides'],
+    UniBefehle::overridesAktiv($dis16, 16, true, $r16['vorher'])['overrides'] === $roh['port_overrides'], $r16['vorher']['forward'], $ovAn($r16)[1]['excluded_networkconf_ids']], [true, true, 'customize', ['net-2']]);
+check('overridesAktiv: Merker mit Feld null entfernt das Feld wieder; ungueltiger Merker faellt auf den Standard zurueck', [array_key_exists('port_security_enabled', UniBefehle::overridesAktiv(['port_overrides' => [['port_idx' => 5, 'forward' => 'disabled']]], 5, true,
+    ['forward' => 'all', 'native_networkconf_id' => 'n', 'tagged_vlan_mgmt' => 'auto', 'port_security_enabled' => null])['overrides'][0]),
+    UniBefehle::overridesAktiv($dis15, 15, true, ['forward' => 'unsinn', 'native_networkconf_id' => 'x', 'tagged_vlan_mgmt' => 'auto', 'port_security_enabled' => false])['overrides'][14]['native_networkconf_id']], [false, 'net-1']);
+$r26 = UniBefehle::overridesAktiv($roh, 26, false, []);
+check('overridesAktiv: Port ohne Eintrag bekommt einen neuen (wie die Oberflaeche), Liste waechst um 1, Ausgangswerte aus der port_table', [count($r26['overrides']), $r26['overrides'][24], $r26['aenderung'], $r26['vorher']],
+    [25, ['port_idx' => 26, 'setting_preference' => 'auto', 'forward' => 'disabled', 'native_networkconf_id' => '', 'tagged_vlan_mgmt' => 'block_all', 'port_security_enabled' => true], true,
+        ['forward' => 'all', 'native_networkconf_id' => 'net-1', 'tagged_vlan_mgmt' => 'auto', 'port_security_enabled' => false]]);
+check('overridesAktiv: schon eingeschalteter Port wird nicht angefasst', [UniBefehle::overridesAktiv($roh, 15, true, [])['aenderung'], UniBefehle::overridesAktiv($roh, 15, true, [])['overrides'] === $roh['port_overrides']], [false, true]);
+check('overridesAktiv: Port mit Port-Profil (portconf_id) wird abgelehnt', [UniBefehle::overridesAktiv($roh, 11, false, [])['ok'], UniBefehle::overridesAktiv($roh, 11, false, [])['text']],
+    [false, 'Der Port nutzt ein Port-Profil: Ein- und Ausschalten wird dafür nicht unterstützt']);
+check('portForward: aus Eintrag, sonst aus port_table, sonst leer', [UniBefehle::portForward($roh, 16), UniBefehle::portForward($roh, 26), UniBefehle::portForward($roh, 3), UniBefehle::portForward($roh, 99), UniBefehle::portForward($dis15, 15)], ['customize', 'all', '', '', 'disabled']);
 
 // ---------------------------------------------------------------- Prozesse (Fake-Gateway, Fake-Broker)
 $php = PHP_BINARY;
@@ -211,7 +287,7 @@ $resetGw = function (array $ctl = []) use ($gdir, $gwCtl) {
     foreach (['gw.log', 'sessions.json'] as $f) {
         @unlink("$gdir/$f");
     }
-    file_put_contents("$gdir/state.json", json_encode(['geraete' => fx_geraete(), 'clients' => fx_clients()]));
+    file_put_contents("$gdir/state.json", json_encode(['geraete' => fx_geraete(), 'clients' => fx_clients(), 'bekannt' => fx_bekannte()]));
     $gwCtl($ctl + ['user' => GWUSER, 'pw' => GWPW, 'csrf' => 'header']);
 };
 
@@ -255,7 +331,7 @@ if ($ext) {
     };
     $sw = 'switch_keller';
     $macSw = '020000000002';
-    $befehleCfg = ['geraete' => [$macSw => ['aktiv' => true, 'name' => '', 'ports' => '', 'befehle_ports' => '11-13, 22, 25']]];
+    $befehleCfg = ['geraete' => [$macSw => ['aktiv' => true, 'name' => '', 'ports' => '', 'befehle_ports' => '11-13, 22, 25', 'schalt_ports' => '11, 15, 16, 22, 26']]];
 
     // ---------------------------------------------------------------- A: Anmeldung, Werte, Befehle (CSRF im Antwortkopf)
     $resetGw(['csrf' => 'header']);
@@ -308,6 +384,50 @@ if ($ext) {
     check('A: power-cycle mit MAC in Doppelpunktschreibweise und Portnummer', (bool)preg_match('/CMD \{"cmd":"power-cycle","mac":"02:00:00:00:00:02","port_idx":13\}/', $glog()), true);
     $q = $befehl("unifi/befehl/$sw/port13/poe", '1');
     check('A: PoE ein an Port 13 (auto)', [$q, (bool)preg_match('/"port_idx":13,"poe_mode":"auto"/', $glog())], [['angenommen', 'ausgefuehrt'], true]);
+    // Port ganz ein/aus (aktiv)
+    check('A: Zustand aktiv wird veroeffentlicht (Port 15 = 1)', $has("unifi/$sw/port15/aktiv", '1'), true);
+    $q = $befehl("unifi/befehl/$sw/port14/aktiv", '0');
+    check('A: aktiv an einem nicht freigegebenen Port abgelehnt', $q, ['abgelehnt: Ein- und Ausschalten für Port 14 ist gesperrt (im Reiter „Geräte“ freigeben)']);
+    $q = $befehl("unifi/befehl/$sw/port12/aktiv", '0');
+    check('A: aktiv an Port 12 (nur PoE-Freigabe) abgelehnt', str_starts_with($q[0] ?? '', 'abgelehnt: Ein- und Ausschalten für Port 12 ist gesperrt'), true);
+    $q = $befehl("unifi/befehl/$sw/port22/aktiv", '0');
+    check('A: aktiv am Uplink abgelehnt', $q, ['abgelehnt: Port 22 ist ein Uplink und wird nie geschaltet']);
+    $q = $befehl("unifi/befehl/$sw/port15/aktiv", '2');
+    check('A: aktiv mit ungueltigem Wert abgelehnt', $q, ['abgelehnt: ungültiger Wert']);
+    $q = $befehl("unifi/befehl/$sw/port11/aktiv", '0');
+    check('A: aktiv an einem Port mit Port-Profil: angenommen, dann abgelehnt', $q, ['angenommen', 'abgelehnt: Der Port nutzt ein Port-Profil: Ein- und Ausschalten wird dafür nicht unterstützt']);
+    $putsVorher = substr_count($glog(), 'PUT ');
+    $q = $befehl("unifi/befehl/$sw/port15/aktiv", '1');
+    check('A: aktiv 1 an einem schon eingeschalteten Port: ausgefuehrt ohne Aenderung am Gateway', [$q, substr_count($glog(), 'PUT ') - $putsVorher], [['angenommen', 'ausgefuehrt'], 0]);
+    $q = $befehl("unifi/befehl/$sw/port15/aktiv", '0');
+    check('A: Port 15 abschalten: angenommen, dann ausgefuehrt', $q = $befehl("unifi/befehl/$sw/port15/aktiv", '0'), ['angenommen', 'ausgefuehrt']);
+    preg_match_all('/PUT id-sw (.*)/', $glog(), $pm);
+    $ov = json_decode($pm[1][count($pm[1]) - 1], true)['port_overrides'] ?? [];
+    $o15 = array_values(array_filter($ov, fn($o) => $o['port_idx'] === 15))[0] ?? [];
+    check('A: PUT enthaelt die komplette Liste (24), Port 15 wie in der Oberflaeche abgeschaltet, nur dieser Eintrag geaendert', [count($ov), $o15['forward'] ?? null, $o15['native_networkconf_id'] ?? null, $o15['tagged_vlan_mgmt'] ?? null, $o15['port_security_enabled'] ?? null,
+        $o15['poe_mode'] ?? null, count(array_filter($ov, fn($o) => ($o['forward'] ?? '') === 'disabled'))], [24, 'disabled', '', 'block_all', true, 'auto', 1]);
+    check('A: danach meldet das Plugin port15/aktiv = 0 (Gateway hat den Port abgeschaltet)', waitFor(fn() => $has("unifi/$sw/port15/aktiv", '0'), 10), true);
+    $merk = Util::jsonLoad("$dA/data/port_vorher.json");
+    check('A: Ausgangswerte vor dem Abschalten sind im Datenordner gemerkt, ohne Zugangsdaten', [$merk, str_contains((string)@file_get_contents("$dA/data/port_vorher.json"), GWPW)],
+        [[$macSw . ':15' => ['forward' => 'all', 'native_networkconf_id' => 'net-1', 'tagged_vlan_mgmt' => 'auto', 'port_security_enabled' => false]], false]);
+    $q = $befehl("unifi/befehl/$sw/port15/aktiv", '1');
+    check('A: Port 15 wieder einschalten', $q, ['angenommen', 'ausgefuehrt']);
+    check('A: danach port15/aktiv = 1, Merker entfernt', [waitFor(fn() => $has("unifi/$sw/port15/aktiv", '1'), 10), Util::jsonLoad("$dA/data/port_vorher.json")], [true, []]);
+    $q = $befehl("unifi/befehl/$sw/port16/aktiv", '0');
+    check('A: Port 16 (customize) abschalten, Ausgangswerte gemerkt', [$q, Util::jsonLoad("$dA/data/port_vorher.json")[$macSw . ':16']['forward'] ?? null], [['angenommen', 'ausgefuehrt'], 'customize']);
+    $q = $befehl("unifi/befehl/$sw/port16/aktiv", '1');
+    preg_match_all('/PUT id-sw (.*)/', $glog(), $pm);
+    $ov = json_decode($pm[1][count($pm[1]) - 1], true)['port_overrides'] ?? [];
+    $o16 = array_values(array_filter($ov, fn($o) => $o['port_idx'] === 16))[0] ?? [];
+    check('A: Port 16 wieder ein: wie vorher (customize, custom, Netz, ausgeschlossene Netze), Merker weg', [$q, $o16['forward'] ?? null, $o16['tagged_vlan_mgmt'] ?? null, $o16['native_networkconf_id'] ?? null, $o16['excluded_networkconf_ids'] ?? null,
+        Util::jsonLoad("$dA/data/port_vorher.json")], [['angenommen', 'ausgefuehrt'], 'customize', 'custom', 'net-1', ['net-2'], []]);
+    $q = $befehl("unifi/befehl/$sw/port26/aktiv", '0');
+    preg_match_all('/PUT id-sw (.*)/', $glog(), $pm);
+    $ov = json_decode($pm[1][count($pm[1]) - 1], true)['port_overrides'] ?? [];
+    check('A: Port 26 ohne bisherigen Eintrag: neuer Eintrag, abgeschaltet (Liste 25)', [$q, count($ov), array_values(array_filter($ov, fn($o) => $o['port_idx'] === 26))[0]['forward'] ?? null], [['angenommen', 'ausgefuehrt'], 25, 'disabled']);
+    $q = $befehl("unifi/befehl/$sw/port26/aktiv", '1');
+    check('A: Port 26 wieder ein', [$q, waitFor(fn() => $has("unifi/$sw/port26/aktiv", '1'), 10)], [['angenommen', 'ausgefuehrt'], true]);
+    check('A: aktiv-Befehle stehen im Log ohne Zugangsdaten', [str_contains($logA(), 'Befehl aktiv=0 fuer Port 15 an switch_keller angenommen'), str_contains($logA(), GWPW)], [true, false]);
     // schnell hintereinander: zweiter Befehl innerhalb einer Sekunde wird abgelehnt
     $off = strlen($mlog());
     $einspeisen($mdir, "unifi/befehl/$sw/port13/poe\t1\nunifi/befehl/$sw/port13/poe\t1\n");
@@ -378,6 +498,53 @@ if ($ext) {
     check('F: ausgewaehlte Ports unter dem eigenen Namen, mit Datenraten', waitFor(fn() => $has('unifi/sw/port18/clients', '3') && $has('unifi/sw/port18/rx_bps', '4000000') && $has('unifi/sw/port1/up', '1'), 15), true);
     check('F: andere Ports fehlen', [str_contains($mlog(), 'unifi/sw/port4/'), str_contains($mlog(), 'unifi/sw/port25/'), str_contains($mlog(), 'unifi/switch_keller/')], [false, false, false]);
     check('F: Geraetewerte bleiben', $has('unifi/sw/poe_gesamt_w', '31.07'), true);
+    $stopWait($svc);
+
+    // ---------------------------------------------------------------- I: Online-Status ausgewaehlter Clients
+    $resetGw();
+    $reset();
+    $clientCfg = ['clients' => ['020000001003' => ['name' => ''], '020000001002' => ['name' => ''], '020000003001' => ['name' => ''], '020000009999' => ['name' => '']]];
+    $dI = $neuDir('I', $clientCfg);
+    $svc = $starte($dI);
+    check('I: Online-Status der ausgewaehlten Clients (verbunden 1, bekannt aber offline 0, unbekannt 0)', waitFor(fn() => $has('unifi/client/kabel-client_3/online', '1') && $has('unifi/client/client_001002/online', '1')
+        && $has('unifi/client/alter_drucker/online', '0') && $has('unifi/client/client_009999/online', '0'), 15), true);
+    check('I: nicht ausgewaehlte Clients fehlen in MQTT', [str_contains($mlog(), 'unifi/client/host1'), str_contains($mlog(), 'unifi/client/client_001001')], [false, false]);
+    check('I: keine IP-Adressen und keine Original-Clientnamen in MQTT, Log und Konfiguration', [str_contains($mlog(), '192.0.2.'), str_contains((string)@file_get_contents("$dI/unifi.log"), '192.0.2.'), str_contains((string)@file_get_contents("$dI/unifi.json"), '192.0.2.'),
+        str_contains($mlog(), 'Kabel-Client'), str_contains($mlog(), 'Alter Drucker')], [false, false, false, false, false]);
+    $netzI = Util::jsonLoad("$dI/run/netz.json");
+    check('I: Weboberflaeche bekommt alle Clients (verbunden und bekannt) im RAM', [count($netzI['modell']['client_liste'] ?? []), count($netzI['bekannt'] ?? []), str_contains((string)@file_get_contents("$dI/unifi.json"), 'Alter Drucker')], [19, 22, false]);
+    check('I: Liste der bekannten Clients einmal geholt (nicht bei jeder Abfrage)', substr_count($glog(), 'GET user'), 1);
+    // Client trennt sich: naechste Abfrage meldet 0
+    $stI = json_decode((string)file_get_contents("$gdir/state.json"), true);
+    $stI['clients'] = array_values(array_filter($stI['clients'], fn($c) => $c['mac'] !== '02:00:00:00:10:03'));
+    file_put_contents("$gdir/state.json", json_encode($stI));
+    check('I: getrennter Client wird mit 0 gemeldet', waitFor(fn() => $has('unifi/client/kabel-client_3/online', '0'), 12), true);
+    $stI['clients'][] = ['mac' => '02:00:00:00:10:03', 'ip' => '192.0.2.13', 'is_wired' => true, 'sw_mac' => FX_SW, 'sw_port' => 1, 'name' => 'Kabel-Client 3'];
+    file_put_contents("$gdir/state.json", json_encode($stI));
+    check('I: wieder verbunden: 1', waitFor(fn() => substr_count($mlog(), "unifi/client/kabel-client_3/online\t1") >= 2, 12), true);
+    $stopWait($svc);
+
+    // ---------------------------------------------------------------- J: Liste der bekannten Clients nicht lesbar (403) ist kein Fehler
+    $resetGw(['user_403' => true]);
+    $reset();
+    $dJ = $neuDir('J', $clientCfg);
+    $svc = $starte($dJ);
+    check('J: ohne rest/user: status/ok 1, verbundene Clients 1, offline bekannte 0', waitFor(fn() => $has('unifi/status/ok', '1') && $has('unifi/client/kabel-client_3/online', '1') && $has('unifi/client/client_003001/online', '0'), 15), true);
+    check('J: Warnung im Log, Weboberflaeche ohne bekannte Clients', [str_contains((string)@file_get_contents("$dJ/unifi.log"), 'Liste der bekannten Clients nicht lesbar'), count(Util::jsonLoad("$dJ/run/netz.json")['bekannt'] ?? [])], [true, 0]);
+    $stopWait($svc);
+
+    // ---------------------------------------------------------------- K: Gateway uebernimmt die Aenderung nicht (wie bei "nur forward senden"): abgelehnt und zurueckgerollt
+    $resetGw(['aktiv_ignorieren' => true]);
+    $reset();
+    $dK = $neuDir('K', $befehleCfg);
+    $svc = $starte($dK);
+    check('K: Dienst laeuft', waitFor(fn() => $has("unifi/$sw/port15/aktiv", '1'), 15), true);
+    $q = $befehl("unifi/befehl/$sw/port15/aktiv", '0');
+    check('K: Quittung abgelehnt statt ausgefuehrt, mit Grund', $q, ['angenommen', 'abgelehnt: Das Gateway hat die Änderung nicht übernommen (die Einstellung des Ports blieb unverändert)']);
+    preg_match_all('/PUT id-sw (.*)/', $glog(), $pm);
+    $stK = json_decode((string)file_get_contents("$gdir/state.json"), true);
+    check('K: zweimal gesendet (Aenderung, dann urspruenglicher Stand), Liste danach wie am Anfang, kein Merker', [count($pm[1]), $stK['geraete'][1]['port_overrides'] == fx_geraete()[1]['port_overrides'], is_file("$dK/data/port_vorher.json")], [2, true, false]);
+    check('K: Port bleibt aktiv', $has("unifi/$sw/port15/aktiv", '1') && !$has("unifi/$sw/port15/aktiv", '0'), true);
     $stopWait($svc);
 
     // ---------------------------------------------------------------- G: Zwei-Faktor-Anmeldung, keine Daten
@@ -474,16 +641,17 @@ file_put_contents("$uiDir/sys/subscriptions.json", json_encode(['Subscriptions' 
 file_put_contents("$uiDir/log/test.log", "2026-01-01 <INFO> Testzeile\n");
 $uiConf = UniConfig::defaults();
 $uiConf['controller'] = ['adresse' => 'https://gw.example.invalid', 'benutzer' => 'uibenutzer', 'passwort' => 'uigeheim777', 'seite' => 'default', 'tls_pruefen' => false];
-$uiConf['geraete'] = [$macSw ?? '020000000002' => ['aktiv' => true, 'name' => 'keller', 'ports' => '1-8', 'befehle_ports' => '11-13']];
+$uiConf['geraete'] = [$macSw ?? '020000000002' => ['aktiv' => true, 'name' => 'keller', 'ports' => '1-8', 'befehle_ports' => '11-13', 'schalt_ports' => '15, 16']];
+$uiConf['clients'] = ['020000001003' => ['name' => 'kabel-client_3'], '020000003001' => ['name' => ''], '020000009999' => ['name' => '']];
 $uiConf['mqtt']['passwort'] = 'brokerpasswort77';
 Util::jsonSave("$uiDir/dev/unifi.json", $uiConf);
-foreach (['verbindung', 'geraete', 'netz', 'mqtt', 'loxone', 'test', 'logs'] as $tab) {
+foreach (['verbindung', 'geraete', 'netz', 'clients', 'mqtt', 'loxone', 'test', 'logs'] as $tab) {
     [$o, $e] = $uiPage($tab, ['STUB_UDP' => '12345']);
     check("UI $tab: ohne PHP-Warnungen und -Fehler", [$bad($o, $e), $e], [false, '']);
     check("UI $tab: Kopf und Fuss", str_contains($o, '<!--HEADER:') && str_contains($o, '<!--FOOTER-->'), true);
     preg_match('/<!--NAVBAR:(.*?)-->/', $o, $m);
     $nav = json_decode($m[1] ?? '[]', true) ?: [];
-    check("UI $tab: Menueleiste mit 7 Eintraegen, genau ein aktiver (dieser)", [count($nav), count(array_filter($nav, fn($n) => !empty($n['active']))), array_values(array_filter($nav, fn($n) => !empty($n['active'])))[0]['URL'] ?? null], [7, 1, '?tab=' . $tab]);
+    check("UI $tab: Menueleiste mit 8 Eintraegen, genau ein aktiver (dieser)", [count($nav), count(array_filter($nav, fn($n) => !empty($n['active']))), array_values(array_filter($nav, fn($n) => !empty($n['active'])))[0]['URL'] ?? null], [8, 1, '?tab=' . $tab]);
     check("UI $tab: Design System (nojqm gesetzt, lb-content, kein jQuery-Mobile-Rest)", [str_contains($o, '<!--NOJQM:1-->'), str_contains($o, 'class="lb-content'), str_contains($o, 'data-role='), str_contains($o, 'data-ajax=')], [true, true, false, false]);
     check("UI $tab: kein Zugangsdatum im HTML", [str_contains($o, 'uigeheim777'), str_contains($o, 'brokerpasswort77')], [false, false]);
     check("UI $tab: kein JavaScript (nur Formulare)", [str_contains($o, '<script'), str_contains($o, 'onclick=')], [false, false]);
@@ -501,17 +669,26 @@ Util::jsonSave("$uiDir/dev/run/status.json", $stOk);
 [$o] = $uiPage('verbindung');
 check('UI Verbindung: angemeldet mit letzter Abfrage', [str_contains($o, '<b>angemeldet</b>'), str_contains($o, 'Letzte Abfrage'), str_contains($o, '120 ms')], [true, true, true]);
 // Netzuebersicht aus dem Modell
-Util::jsonSave("$uiDir/dev/run/netz.json", ['zeit' => time(), 'modell' => $m0 = UniDaten::modell(fx_geraete(), fx_clients())]);
+Util::jsonSave("$uiDir/dev/run/netz.json", ['zeit' => time(), 'modell' => $m0 = UniDaten::modell(fx_geraete(), fx_clients()), 'bekannt' => UniDaten::bekannte(fx_bekannte())]);
 [$o, $e] = $uiPage('netz');
-check('UI Netzwerk: Geraete, Ports, PoE, Clients je Port, Access-Point-Clients', [str_contains($o, 'Switch Keller'), str_contains($o, '6,2 W') || str_contains($o, '6.2 W'), str_contains($o, 'AP Wohnzimmer</b> (UniFi-Gerät)'), str_contains($o, 'WLAN-Client 1'),
-    str_contains($o, '4 im 2,4 GHz'), str_contains($o, 'Kabel-Client 3'), str_contains($o, '19 Clients (11 Kabel, 8 WLAN)'), $bad($o, $e)], [true, true, true, true, true, true, true, false]);
+check('UI Netzwerk: Geraete, Ports, PoE, Clients je Port, Access-Point-Clients', [str_contains($o, 'Switch Keller'), str_contains($o, 'US-24-250W'), str_contains($o, '6,2 W') || str_contains($o, '6.2 W'), str_contains($o, 'AP Wohnzimmer</b> (UniFi-Gerät)'), str_contains($o, 'WLAN-Client 1'),
+    str_contains($o, '4 im 2,4 GHz'), str_contains($o, 'Kabel-Client 3'), str_contains($o, '19 Clients (11 Kabel, 8 WLAN)'), $bad($o, $e)], [true, true, true, true, true, true, true, true, false]);
+[$o, $e] = $uiPage('clients');
+check('UI Clients: verbundene Clients mit IP, Ort und Status, gewaehlte (auch offline und unbekannte) sichtbar, andere Offline-Clients ausgeblendet', [str_contains($o, 'Kabel-Client 3'), str_contains($o, '192.0.2.13'), str_contains($o, 'Switch Keller · Port 1'),
+    str_contains($o, 'AP Wohnzimmer · 2,4 GHz · Heim'), str_contains($o, 'Alter Drucker'), str_contains($o, 'zuletzt 13.11.2023'), str_contains($o, '02:00:00:00:99:99'), str_contains($o, 'handy-gast'), str_contains($o, '2 weitere, derzeit nicht verbundene Clients sind ausgeblendet'), $bad($o, $e)],
+    [true, true, true, true, true, true, true, false, true, false]);
+check('UI Clients: Schalter und Namensfeld je Zeile, Auswahl aus der Konfiguration', [str_contains($o, 'name="clients[020000001003][aktiv]" value="1" checked'), str_contains($o, 'name="clients[020000001001][aktiv]" value="1"><span'), str_contains($o, 'name="clients[020000001003][name]" value="kabel-client_3"'),
+    str_contains($o, 'name="clients[020000001001][da]"'), str_contains($o, 'name="clients[020000001001][name]" value="host1"'), str_contains($o, 'name="clients[020000001002][name]" value="client_001002"'), str_contains($o, 'unifi/client/&lt;name&gt;/online')],
+    [true, true, true, true, true, true, true]);
+[$o] = $uiPage('clients', ['STUB_ALLE' => '1']);
+check('UI Clients: mit "alle bekannten" auch die nicht verbundenen', [str_contains($o, 'handy-gast'), str_contains($o, '192.0.2.202'), str_contains($o, '(ohne Namen)'), str_contains($o, 'nur verbundene und gewählte anzeigen')], [true, true, true, true]);
 [$o] = $uiPage('geraete');
 check('UI Geraete: Name, Portauswahl, Befehlsfreigabe, Hinweis auf Stromlos', [str_contains($o, 'name="geraete[020000000002][name]" value="keller"'), str_contains($o, 'name="geraete[020000000002][ports]" value="1-8"'),
-    str_contains($o, 'name="geraete[020000000002][befehle_ports]" value="11-13"'), str_contains($o, 'name="geraete[020000000001][befehle_ports]"'), str_contains($o, 'stromlos'), str_contains($o, 'class="lb-toggle"')], [true, true, true, true, true, true]);
-check('UI Geraete: Platzhalter zeigt den Namen aus dem Gateway, Access Point ohne Port- und Befehlsfelder', [str_contains($o, 'placeholder="ap_wohnzimmer"'), str_contains($o, 'name="geraete[020000000003][ports]"'), str_contains($o, 'name="geraete[020000000003][befehle_ports]"')], [true, false, false]);
+    str_contains($o, 'name="geraete[020000000002][befehle_ports]" value="11-13"'), str_contains($o, 'name="geraete[020000000001][befehle_ports]"'), str_contains($o, 'stromlos'), str_contains($o, 'class="lb-toggle"'), str_contains($o, 'name="geraete[020000000002][schalt_ports]" value="15, 16"'), str_contains($o, 'name="geraete[020000000001][schalt_ports]"')], [true, true, true, true, true, true, true, true]);
+check('UI Geraete: Platzhalter zeigt den Namen aus dem Gateway, Access Point ohne Port- und Befehlsfelder', [str_contains($o, 'placeholder="ap_wohnzimmer"'), str_contains($o, 'name="geraete[020000000003][ports]"'), str_contains($o, 'name="geraete[020000000003][befehle_ports]"'), str_contains($o, 'name="geraete[020000000003][schalt_ports]"')], [true, false, false, false]);
 [$o] = $uiPage('loxone', ['STUB_UDP' => '12345']);
 check('UI Loxone: Topic-Tabelle und Befehle mit UDP-Port und Quittung', [str_contains($o, 'unifi/&lt;gerät&gt;/port&lt;nr&gt;/poe_w') || str_contains($o, 'port<nr>/poe_w'), str_contains($o, 'unifi/status/zaehler'), str_contains($o, '/dev/udp/&lt;LoxBerry-IP&gt;/12345'),
-    str_contains($o, 'unifi/befehl/keller/port&lt;nr&gt;/poe'), str_contains($o, 'neustart'), str_contains($o, 'quittung')], [true, true, true, true, true, true]);
+    str_contains($o, 'unifi/befehl/keller/port&lt;nr&gt;/poe'), str_contains($o, 'neustart'), str_contains($o, 'quittung'), str_contains($o, 'unifi/befehl/keller/port&lt;nr&gt;/aktiv'), str_contains($o, 'port&lt;nr&gt;/aktiv</code> zeigt'), str_contains($o, 'unifi/client/&lt;name&gt;/online') || str_contains($o, 'unifi/client/<name>/online')], [true, true, true, true, true, true, true, true, true]);
 [$o] = $uiPage('mqtt', ['STUB_UDP' => '12345']);
 check('UI mqtt: Gateway V2, Abo fehlt, mit Anleitung', str_contains($o, 'Gateway V2: Das Abo „unifi/#“ fehlt'), true);
 file_put_contents("$uiDir/sys/subscriptions.json", json_encode(['Subscriptions' => [['Id' => 'unifi/#']]]));

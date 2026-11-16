@@ -10,12 +10,14 @@ Schema `unifi/<gerät>/…`, Zahlen mit Punkt ohne Einheit, Zustände 0/1, nicht
 | `unifi/<gerät>/clients_gast`, `clients_2g`, `clients_5g`, `clients_6g` | - | Access Points: Gäste, Clients je Funkband |
 | `unifi/<gerät>/poe_gesamt_w`, `poe_max_w` | W | Geräte mit PoE: aktuelle Leistung, Budget |
 | `unifi/<gerät>/port<nr>/up` | 0/1 | Link |
+| `unifi/<gerät>/port<nr>/aktiv` | 0/1 | Port eingeschaltet (0 = abgeschaltet) |
 | `unifi/<gerät>/port<nr>/speed_mbit` | Mbit/s | Geschwindigkeit, 0 ohne Link |
 | `unifi/<gerät>/port<nr>/clients` | - | Clients, die an diesem Port hängen |
 | `unifi/<gerät>/port<nr>/poe_an`, `poe_w`, `poe_ma` | 0/1, W, mA | PoE-Ports: liefert Strom, Leistung, Strom |
 | `unifi/<gerät>/port<nr>/rx_bps`, `tx_bps` | bit/s | nur mit der Option „Datenraten“ |
 | `unifi/netz/clients`, `clients_kabel`, `clients_wlan` | - | Clients im ganzen Netz |
 | `unifi/netz/poe_gesamt_w` | W | PoE aller Geräte |
+| `unifi/client/<name>/online` | 0/1 | nur für im Reiter „Clients“ gewählte Clients: verbunden (1) oder nicht (0) |
 | `unifi/status/ok` | 0/1 | Anmeldung und letzte Abfrage in Ordnung (No Cache) |
 | `unifi/status/zaehler` | 0–999 | Lebenszeichen, alle 10 s (No Cache) |
 | `unifi/status/ts` | s | Zeitstempel des Lebenszeichens |
@@ -24,4 +26,4 @@ Im MQTT-Gateway `unifi/status/ok` und `unifi/status/zaehler` auf *No Cache* stel
 
 ## Befehle
 
-`unifi/befehl/<gerät>/port<nr>/<befehl>` mit `poe` (1 = ein, 0 = aus) oder `neustart` (1). Ab Werk gesperrt, im Reiter „Geräte“ je Port freizugeben. Quittung unter `…/<befehl>/quittung`: `angenommen`, dann `ausgefuehrt` oder `abgelehnt: <Grund>`.
+`unifi/befehl/<gerät>/port<nr>/<befehl>` mit `poe` (1 = ein, 0 = aus), `neustart` (1) oder `aktiv` (1 = Port ein, 0 = Port ganz aus, nicht nur PoE). Ab Werk gesperrt, im Reiter „Geräte“ je Port freizugeben (PoE-Befehle und Ein/Aus haben je eine eigene Freigabe). Ein abgeschalteter Port trennt jedes angeschlossene Gerät vom Netz. Quittung unter `…/<befehl>/quittung`: `angenommen`, dann `ausgefuehrt` oder `abgelehnt: <Grund>`.

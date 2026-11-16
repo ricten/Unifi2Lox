@@ -107,6 +107,9 @@ $modell = null;                 // UniDaten::modell()
 $roh = [];                      // MAC => Rohdaten des Geraets (fuer Befehle)
 $namen = [];                    // MAC => Name im Topic
 $nameZuMac = [];
+$bekannt = [];                  // alle dem Gateway bekannten Clients (UniDaten::bekannte(); nur fuer die Weboberflaeche und den Online-Status)
+$bekanntNext = 0;
+$clientNamen = [];              // MAC => Name im Topic der ausgewaehlten Clients
 $gesendet = [];                 // Topic => [Wert, Zeit]
 $letzterBefehl = 0.0;
 $mqtt = null;
@@ -123,19 +126,21 @@ $started = time();
 $log->info('UniFi-Dienst ' . AppVersion::CURRENT . ' gestartet (PID ' . getmypid() . ')');
 
 /** Namen der Geraete neu bilden (nach Abfrage oder Konfigurationsaenderung). */
-$baueNamen = function () use (&$namen, &$nameZuMac, &$modell, &$uni) {
+$baueNamen = function () use (&$namen, &$nameZuMac, &$modell, &$uni, &$bekannt, &$clientNamen) {
     $namen = [];
     $nameZuMac = [];
+    $clientNamen = [];
     if ($modell === null) {
         return;
     }
+    $clientNamen = UniConfig::clientNamen($uni, UniDaten::clientAnzeige($modell, $bekannt));
     $namen = UniConfig::namen($uni, array_map(fn($g) => ['mac' => $g['mac'], 'name' => $g['name'], 'typ' => $g['typ']], $modell['geraete']));
     $nameZuMac = array_flip($namen);
 };
 
 /** Eine Abfrage (Geraete und Clients) am Gateway. Liefert true bei Erfolg. */
 $abfragen = function (int $now) use (&$ctl, &$authStatus, &$authText, &$authSeit, &$authNext, &$abfrageOk, &$abfrageText, &$abfrageZeit, &$abfrageDauerMs,
-    &$abfrageZaehler, &$modell, &$roh, $paths, $log, $baueNamen): bool {
+    &$abfrageZaehler, &$modell, &$roh, &$bekannt, &$bekanntNext, $paths, $log, $baueNamen): bool {
     $t0 = microtime(true);
     $g = $ctl->geraete();
     $c = $g['ok'] ? $ctl->clients() : $g;
@@ -150,8 +155,17 @@ $abfragen = function (int $now) use (&$ctl, &$authStatus, &$authText, &$authSeit
         $abfrageText = '';
         $abfrageZeit = $now;
         $abfrageZaehler++;
+        if ($now >= $bekanntNext) {                       // alle bekannten Clients (auch offline) nur alle 5 Minuten; ein Fehler hier ist nicht schlimm
+            $bekanntNext = $now + 300;
+            $u = $ctl->bekannteClients();
+            if ($u['ok']) {
+                $bekannt = UniDaten::bekannte($u['daten']);
+            } else {
+                $log->warn('Liste der bekannten Clients nicht lesbar: ' . $u['text'], 'bekannte-clients');
+            }
+        }
         $baueNamen();
-        Util::jsonSave($paths->netzFile(), ['zeit' => $now, 'modell' => $modell]);
+        Util::jsonSave($paths->netzFile(), ['zeit' => $now, 'modell' => $modell, 'bekannt' => $bekannt]);
         $log->debug('Abfrage: ' . count($modell['geraete']) . ' Geräte, ' . $modell['clients']['gesamt'] . ' Clients, ' . $abfrageDauerMs . ' ms');
         return true;
     }
@@ -171,7 +185,7 @@ $abfragen = function (int $now) use (&$ctl, &$authStatus, &$authText, &$authSeit
 };
 
 /** Befehl aus Loxone: unifi/befehl/<geraet>/port<nr>/<befehl> = Wert. Quittung zuerst "angenommen", dann "ausgefuehrt" oder "abgelehnt: <Grund>". */
-$befehl = function (string $topic, string $msg, MqttClient $mqtt) use (&$nameZuMac, &$modell, &$uni, &$ctl, &$authStatus, &$letzterBefehl, &$abfrageNext, &$roh, $log) {
+$befehl = function (string $topic, string $msg, MqttClient $mqtt) use (&$nameZuMac, &$modell, &$uni, &$ctl, &$authStatus, &$letzterBefehl, &$abfrageNext, &$roh, $paths, $log) {
     $p = UniBefehle::parseTopic($topic);
     if ($p === null) {
         return;         // auch alle .../quittung
@@ -220,7 +234,23 @@ $befehl = function (string $topic, string $msg, MqttClient $mqtt) use (&$nameZuM
         $log->error("Befehl $cmd Port $port an $name: " . ($frisch['ok'] ? 'Gerät nicht gefunden' : $frisch['text']), 'befehl');
         return;
     }
-    $r = $cmd === 'poe' ? $ctl->poeModus($dev, $port, $msg === '1' ? 'auto' : 'off') : $ctl->powerCycle($mac, $port);
+    if ($cmd === 'aktiv') {
+        // Weiterleitung und setting_preference vor dem Abschalten merken (Datenordner, ueberlebt Neustart und Update), damit der Port beim Einschalten dorthin zurueckkehrt
+        $merkDatei = $paths->data . '/port_vorher.json';
+        $merk = Util::jsonLoad($merkDatei);
+        $schluessel = $mac . ':' . $port;
+        $r = $ctl->portAktiv($dev, $port, $msg === '1', is_array($merk[$schluessel] ?? null) ? $merk[$schluessel] : []);
+        if ($r['ok'] && $r['aenderung']) {
+            if ($msg === '1') {
+                unset($merk[$schluessel]);
+            } else {
+                $merk[$schluessel] = $r['vorher'];
+            }
+            Util::jsonSave($merkDatei, $merk);
+        }
+    } else {
+        $r = $cmd === 'poe' ? $ctl->poeModus($dev, $port, $msg === '1' ? 'auto' : 'off') : $ctl->powerCycle($mac, $port);
+    }
     if ($r['ok']) {
         $log->info("Befehl $cmd Port $port an $name ausgefuehrt");
         $mqtt->publish($quit, 'ausgefuehrt');
@@ -275,7 +305,7 @@ while ($running) {
                 $authSeit = $now;
                 $abfrageNext = 0;
             }
-            if ($uni['geraete'] != $alt['geraete'] || $uni['verkehr'] !== $alt['verkehr']) {
+            if ($uni['geraete'] != $alt['geraete'] || $uni['verkehr'] !== $alt['verkehr'] || $uni['clients'] != $alt['clients']) {
                 $baueNamen();
                 $gesendet = [];                  // Namen oder Portauswahl geaendert: alles neu senden
             }
@@ -375,6 +405,9 @@ while ($running) {
                 }
                 foreach (UniDaten::netzWerte($modell) as $k => $v) {
                     $alle[T . '/netz/' . $k] = $v;
+                }
+                foreach (UniDaten::clientWerte(UniDaten::clientAnzeige($modell, $bekannt), $clientNamen) as $k => $v) {
+                    $alle[T . '/client/' . $k] = $v;
                 }
                 foreach ($alle as $topic => $v) {
                     if (!isset($gesendet[$topic]) || $gesendet[$topic][0] !== $v || $now - $gesendet[$topic][1] >= REFRESH) {

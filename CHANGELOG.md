@@ -2,6 +2,22 @@
 
 Alle Änderungen an diesem Plugin. Schema: MAJOR.MINOR.PATCH.
 
+## [0.2.0] - 2026-11-16
+
+### Neu
+- **Port ganz ein- und ausschalten** (Befehl `aktiv`, 1 = ein, 0 = aus), nicht nur PoE: `unifi/befehl/<gerät>/port<nr>/aktiv`. Das Plugin schreibt den Eintrag des Ports in `port_overrides` so, wie es die Oberfläche des Gateways beim Abschalten tut: `forward` = `disabled`, kein Netz (`native_networkconf_id` leer), `tagged_vlan_mgmt` = `block_all`, `port_security_enabled` = true (ein `forward` allein verwirft das Gateway). Alle anderen Felder des Eintrags bleiben unverändert. Die vier alten Werte merkt sich das Plugin im Datenordner und stellt sie beim Einschalten wieder her; ohne Merker (Port wurde anderswo abgeschaltet) setzt es `forward` = `all`, `tagged_vlan_mgmt` = `auto`, die Port-Sicherheit aus und das häufigste Netz der übrigen Ports.
+- **Eigene Freigabe** je Gerät im Reiter „Geräte“: Spalte „Ports ein/aus für Ports“ (ab Werk gesperrt). Die PoE-Freigabe gilt dafür nicht, und umgekehrt. Uplink-Ports werden nie geschaltet; anders als bei PoE sind auch Ports ohne PoE möglich (Switch-Ports, SFP).
+- Neues Topic `unifi/<gerät>/port<nr>/aktiv` (0/1): Port eingeschaltet (0 auch, wenn der Port in der Oberfläche des Gateways abgeschaltet wurde). Je Port gibt es damit bis zu sieben Topics.
+- Die Weboberfläche zeigt statt des Modellcodes die **Bezeichnung von Ubiquiti** (z. B. `U7PG2` → UAP-AC-Pro, `UAP6MP` → U6-Pro, `US24P250` → US-24-250W); unbekannte Codes bleiben unverändert. In MQTT (`unifi/<gerät>/modell`) steht weiter der Code.
+- **Reiter „Clients“:** alle Clients des Gateways mit Name, MAC-Adresse, **IP-Adresse**, Verbindung (Switch und Port bzw. Access Point, Band und WLAN) und Status; verbundene zuerst, auf Wunsch auch alle bekannten, derzeit nicht verbundenen Clients (Link „alle bekannten anzeigen“).
+- **Online-Status per MQTT je Client wählbar:** Schalter je Client, Name im Topic änderbar. Gemeldet wird `unifi/client/<name>/online` (1 = verbunden, 0 = nicht verbunden, auch für gewählte Clients, die gerade nicht verbunden oder dem Gateway unbekannt sind). Dazu liest der Dienst alle 5 Minuten die Liste der bekannten Clients (`rest/user`); ist sie nicht lesbar, ist das kein Fehler (nur Warnung im Log).
+- Gespeichert werden nur die gewählten Clients (MAC-Adresse und Name im Topic); Namen und IP-Adressen aller anderen Clients bleiben im Arbeitsspeicher, IP-Adressen gehen nie nach MQTT. Der vorgeschlagene Name im Topic wird beim Speichern festgeschrieben (ändert sich der Name im Gateway später, bleibt das Topic gleich).
+- Ein Port mit Port-Profil (`portconf_id`) wird nicht geschaltet (Quittung `abgelehnt`), weil dort das Profil statt der Weiterleitung gilt.
+
+### Hinweise
+- **Am echten Gateway geprüft (2026-11-16, Port 2 des Cloud Gateways, ein freier Port, den Rico dort abgeschaltet hatte):** Schalten in vier Schritten (ein ohne Merker, aus, ein mit Merker, aus) mit der Zustandsprüfung des Plugins: Das Gateway übernimmt die vier Felder, die Portzeile zeigt `enable` = false und `forward` = `disabled`, das Einschalten mit Merker stellt den Eintrag **exakt** wieder her, alle anderen Einträge von `port_overrides` blieben unverändert; jeder Schritt wirkte nach etwa 10 Sekunden. **Nicht geprüft** sind Ports eines Switches (gleiche Schnittstelle, aber andere Hardware) und ein Port mit angeschlossenem Gerät. Gemessen am Kamera-Port des Switches: Ein `forward` = `disabled` allein (auch mit `setting_preference` = `manual`) nimmt das Gateway an und verwirft es wieder, der Port bleibt an. Welche Felder die Oberfläche setzt, wurde zuerst an dem von Rico dort abgeschalteten Port gelesen. Das Plugin liest nach dem Senden neu und quittiert `abgelehnt: Das Gateway hat die Änderung nicht übernommen`, wenn der Port nicht abgeschaltet ist (und stellt den vorherigen Stand der Liste wieder her). Quittung `ausgefuehrt` heißt wie bei PoE „vom Gateway angenommen“.
+- **Ein abgeschalteter Port trennt jedes angeschlossene Gerät vom Netz** (auch den LoxBerry oder den Miniserver, wenn sie daran hängen): nur Ports freigeben, die dafür taugen.
+
 ## [0.1.0] - 2026-11-14
 
 Erste Version (Beta). Ersetzt den ioBroker-Adapter für UniFi.

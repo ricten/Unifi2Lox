@@ -34,19 +34,28 @@ Wurzel `unifi/`. Gerätename = Name im Plugin, sonst Name im Gateway (ohne Leerz
 | `unifi/<gerät>/clients_gast`, `clients_2g`, `clients_5g`, `clients_6g` | - | Access Points |
 | `unifi/<gerät>/poe_gesamt_w`, `poe_max_w` | W | Geräte mit PoE |
 | `unifi/<gerät>/port<nr>/up` | 0/1 | Link |
+| `…/port<nr>/aktiv` | 0/1 | Port eingeschaltet: `forward` ≠ `disabled` und `enable` ≠ false |
 | `…/port<nr>/speed_mbit` | Mbit/s | 0 ohne Link |
 | `…/port<nr>/clients` | - | Kabel-Clients an diesem Port |
 | `…/port<nr>/poe_an`, `poe_w`, `poe_ma` | 0/1, W, mA | nur PoE-Ports |
 | `…/port<nr>/rx_bps`, `tx_bps` | bit/s | nur mit Option „Datenraten“ |
 | `unifi/netz/clients`, `clients_kabel`, `clients_wlan`, `poe_gesamt_w` | - / W | ganzes Netz |
+| `unifi/client/<name>/online` | 0/1 | nur für im Reiter „Clients“ gewählte Clients: in `stat/sta` vorhanden = 1 |
 | `unifi/status/ok`, `zaehler`, `ts` | 0/1, 0–999, s | Lebenszeichen |
 | `unifi/befehl/<gerät>/port<nr>/<befehl>` | | Eingang, Quittung unter `…/quittung` |
 
 Ports lassen sich je Gerät auswählen (`1-8, 22`). Nur Änderungen, alle 5 Minuten alle Werte. Namen der Clients stehen nur in der Weboberfläche.
 
+### Clients (Reiter „Clients“)
+- Verbundene Clients: `stat/sta` (alle 30 s, schon für die Zuordnung zu Ports und Access Points gelesen). Alle bekannten Clients: `GET rest/user` (alle 5 Minuten, nur für die Weboberfläche und den Namen offline gewählter Clients).
+- **Gemessen am echten Gateway (2026-11-16, nur lesend):** `rest/user` liefert 226 Einträge (47 verbunden, 179 nicht verbunden; Antwort 0,12 s, rund 170 KB). Felder je Eintrag: `mac`, `last_seen` (immer), `hostname` (rund die Hälfte), `name` (rund ein Viertel), `last_ip` oder `fixed_ip` (rund 70 % der nicht verbundenen). Alle verbundenen Clients stehen auch in `rest/user`.
+- Online = die MAC steht in `stat/sta`. Das Gateway behält WLAN-Clients nach dem Trennen noch einige Zeit in `stat/sta`, der Wechsel auf 0 verzögert sich entsprechend.
+- Konfiguration: `clients` = MAC → Name im Topic (nur gewählte Clients). Der Name im Topic wird beim Speichern aus dem Namen im Gateway vorgeschlagen und festgeschrieben; leer = Name aus dem Gateway, sonst `client_<letzte 6 Hexziffern der MAC>`. Namen und IP-Adressen anderer Clients bleiben im RAM (`netz.json`).
+
 ## 4. Befehle
 
 - `poe` = 1 (`poe_mode` auto) oder 0 (off): `PUT /api/s/<site>/rest/device/<_id>` mit der **kompletten** `port_overrides`-Liste des Geräts (frisch gelesen, nur der Eintrag des Ports geändert; fehlt der Eintrag, wird er mit `portconf_id` aus der `port_table` ergänzt).
+- `aktiv` = 1 oder 0: wie `poe` ein `PUT rest/device/<_id>` mit der kompletten `port_overrides`-Liste. **Gemessen (2026-11-16):** (a) Ein Eintrag mit nur `forward` = `disabled` (auch mit `setting_preference` = `manual`) wird mit `rc ok` angenommen, das Gateway setzt `forward` aber wieder aus `tagged_vlan_mgmt` (auto = `all`, block_all = `native`, custom = `customize`) zurück; der Port bleibt an (Kamera-Port des Switches getestet). (b) Schaltet man einen Port in der Oberfläche ab, ändern sich im Eintrag `forward` → `disabled`, `native_networkconf_id` → `""`, `tagged_vlan_mgmt` → `block_all`, `port_security_enabled` → true (dazu Standardfelder wie `isolation`, `voice_networkconf_id` = `""`, `port_keepalive_enabled`, `autoneg`); `setting_preference` bleibt `auto`; in der `port_table` steht `enable` = false und `forward` = `disabled`. Das Plugin setzt die vier Felder `forward`, `native_networkconf_id`, `tagged_vlan_mgmt`, `port_security_enabled` gemeinsam und merkt die alten Werte im Datenordner (`port_vorher.json`, Schlüssel `<mac>:<port>`); beim Einschalten werden sie zurückgeschrieben, ohne Merker gilt `all`/`auto`/Port-Sicherheit aus/häufigstes Netz der übrigen Ports. Fehlt der Eintrag, wird er angelegt. Ports mit `portconf_id` werden abgelehnt (`rest/portconf` liefert an diesem Gateway keine Profile). Nach dem PUT liest das Plugin neu und lehnt ab (mit Rückstellen der Liste), wenn der Port nicht abgeschaltet ist. Eigene Freigabe `schalt_ports` je Gerät, nie Uplink-Ports, auch Ports ohne PoE. **Am echten Gateway geprüft (2026-11-16, Port 2 des Cloud Gateways):** aus, ein ohne Merker, aus, ein mit Merker (Eintrag danach exakt wie nach dem ersten Einschalten), aus; jeder Schritt wirkte nach etwa 10 s (`enable` und `forward` in der `port_table` folgen), andere Einträge unverändert. Ports eines Switches und Ports mit angeschlossenem Gerät sind nicht geprüft.
 - `neustart` = 1: `POST …/cmd/devmgr` mit `{"cmd":"power-cycle","mac":"aa:bb:…","port_idx":N}`.
 - Nur freigegebene Ports, nie Uplink-Ports und Ports ohne PoE, Neustart nur bei anliegendem PoE, höchstens ein Befehl je Sekunde. Quittung `angenommen`, dann `ausgefuehrt` oder `abgelehnt: <Grund>`; danach Abfrage nach 2 s.
 - **Am echten Gateway geprüft (2026-11-14, Port 23 des Switches, eine Kamera, Konto mit Full Management):**

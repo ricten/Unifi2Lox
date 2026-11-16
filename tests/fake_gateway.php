@@ -3,7 +3,7 @@
  * Fake-UniFi-Gateway fuer Tests (Router fuer den eingebauten PHP-Server):
  *   UNI_FAKE_DIR=<verzeichnis> php -S 127.0.0.1:<port> tests/fake_gateway.php
  * Dateien im Verzeichnis: state.json (geraete, clients), ctl.json (Steuerung der Tests), gw.log (Protokoll ohne Zugangsdaten), sessions.json.
- * ctl.json: user, pw, csrf ("header" = Token im Antwortkopf, "cookie" = nur im JWT des Anmelde-Cookies), mfa, ablauf (naechste Abfrage 401, einmalig), nur_lesen (Aenderungen 403).
+ * ctl.json: aktiv_ignorieren (Aenderung von forward wird verworfen), user_403 (rest/user verboten), user, pw, csrf ("header" = Token im Antwortkopf, "cookie" = nur im JWT des Anmelde-Cookies), mfa, ablauf (naechste Abfrage 401, einmalig), nur_lesen (Aenderungen 403).
  * Nachgebildet ist UniFi OS: Anmeldung unter /api/auth/login, Network-Schnittstelle unter /proxy/network, Aenderungen nur mit X-CSRF-Token.
  */
 $dir = (string)getenv('UNI_FAKE_DIR');
@@ -76,6 +76,13 @@ if ($methode === 'GET') {
         $log('GET sta');
         $antwort(200, $meta($state['clients']));
     }
+    if ($rest === 'rest/user') {
+        $log('GET user');
+        if (!empty($ctl['user_403'])) {
+            $antwort(403, ['code' => 'FORBIDDEN']);
+        }
+        $antwort(200, $meta($state['bekannt'] ?? []));
+    }
     $antwort(404, ['code' => 'NOT_FOUND']);
 }
 // Aenderungen: CSRF-Token und Rechte pruefen
@@ -93,13 +100,34 @@ if ($methode === 'PUT' && preg_match('#^rest/device/([A-Za-z0-9_-]+)$#', $rest, 
     foreach ($state['geraete'] as &$g) {
         if ($g['_id'] === $m[1] && isset($body['port_overrides'])) {
             $g['port_overrides'] = $body['port_overrides'];
-            foreach ($g['port_overrides'] as $o) {
+            foreach ($g['port_overrides'] as $oi => $o) {
                 foreach ($g['port_table'] as &$p) {
                     if ($p['port_idx'] === $o['port_idx'] && isset($o['poe_mode'])) {
                         $p['poe_mode'] = $o['poe_mode'];
                         if ($o['poe_mode'] === 'off') {
                             $p['poe_good'] = false;
                             $p['poe_enable'] = false;
+                            $p['poe_power'] = '0.00';
+                        }
+                    }
+                    if ($p['port_idx'] === $o['port_idx'] && isset($o['forward'])) {      // Port ganz aus: kein Link, kein PoE
+                        // wie am echten Gateway gemessen: "disabled" gilt nur zusammen mit "kein Netz" und tagged_vlan_mgmt block_all (so schaltet die Oberflaeche ab),
+                        // sonst leitet das Gateway forward aus tagged_vlan_mgmt ab und verwirft den gesendeten Wert (ctl: aktiv_ignorieren verwirft immer)
+                        $vlan = (string)($o['tagged_vlan_mgmt'] ?? 'auto');
+                        $abgeschaltet = $o['forward'] === 'disabled' && ($o['native_networkconf_id'] ?? 'x') === '' && $vlan === 'block_all' && empty($ctl['aktiv_ignorieren']);
+                        $fw = $abgeschaltet ? 'disabled' : ($vlan === 'custom' ? 'customize' : ($vlan === 'block_all' ? 'native' : 'all'));
+                        $g['port_overrides'][$oi]['forward'] = $fw;
+                        $p['forward'] = $fw;
+                        foreach (['native_networkconf_id', 'tagged_vlan_mgmt', 'port_security_enabled'] as $k) {
+                            if (array_key_exists($k, $o)) {
+                                $p[$k] = $o[$k];
+                            }
+                        }
+                        $p['enable'] = $fw !== 'disabled';
+                        if ($fw === 'disabled') {
+                            $p['up'] = false;
+                            $p['speed'] = 0;
+                            $p['poe_good'] = false;
                             $p['poe_power'] = '0.00';
                         }
                     }

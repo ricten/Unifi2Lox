@@ -10,7 +10,7 @@
 ^ Release Download | https://github.com/ricten/Unifi2Lox/releases/latest/download/unifi2lox.zip |
 ^ Pre-Release Download | - |
 ^ Quellcode | [[https://github.com/ricten/Unifi2Lox|github.com/ricten/Unifi2Lox]] (MIT-Lizenz) |
-^ Beschreibung | Liest UniFi-Netzwerkgeräte (Cloud Gateway, Dream Machine, Switches, Access Points) lokal über das Gateway und veröffentlicht alle Ports mit Link, die PoE-Leistung je Port, die Clients je Port und je Access Point per MQTT. Über das LoxBerry-MQTT-Gateway gelangen die Werte an den Loxone Miniserver. Dazu Befehle aus Loxone (PoE am Port ein/aus und PoE-Neustart), ab Werk gesperrt, nur für freigegebene Ports und mit Quittung. Ersatz für den ioBroker-Adapter für UniFi. |
+^ Beschreibung | Liest UniFi-Netzwerkgeräte (Cloud Gateway, Dream Machine, Switches, Access Points) lokal über das Gateway und veröffentlicht alle Ports mit Link, die PoE-Leistung je Port, die Clients je Port und je Access Point per MQTT. Über das LoxBerry-MQTT-Gateway gelangen die Werte an den Loxone Miniserver. Dazu Befehle aus Loxone (PoE am Port ein/aus, PoE-Neustart und Port ganz ein/aus), ab Werk gesperrt, nur für freigegebene Ports und mit Quittung. Ersatz für den ioBroker-Adapter für UniFi. |
 ^ Sprachen | DE |
 ^ Diskussion | FORUM-LINK-EINTRAGEN |
 
@@ -32,8 +32,9 @@ Eigenschaften:
   * **Alle Ports** von Switches und Gateway: Link, Geschwindigkeit, Anzahl der Clients je Port, optional Datenraten
   * **PoE je Port:** Leistung (W), Strom (mA), „liefert Strom“; je Gerät Gesamtleistung und PoE-Budget, dazu die Summe im ganzen Netz
   * **Clients je Port** (Kabel) und **Clients je Access Point** (gesamt, Gäste, je Funkband 2,4/5/6 GHz); im ganzen Netz Clients gesamt, Kabel und WLAN
+  * **Online-Status je Client:** Im Reiter „Clients“ stehen alle Clients des Gateways mit IP-Adresse; für die gewählten meldet das Plugin ''unifi/client/<name>/online'' (1 = verbunden, 0 = nicht verbunden)
   * Die **Namen** der Clients je Port und je Access Point zeigt die Weboberfläche im Reiter „Netzwerk“ (nicht MQTT); UniFi-Geräte an Ports (Access Point am Switch) werden erkannt
-  * **Befehle aus Loxone** (ab Werk gesperrt, mit Quittung): ''poe'' (1 = ein, 0 = aus) und ''neustart'' (PoE kurz aus und ein), nur für ausdrücklich freigegebene Ports. Uplink-Ports und Ports ohne PoE werden nie geschaltet
+  * **Befehle aus Loxone** (ab Werk gesperrt, mit Quittung): ''poe'' (1 = ein, 0 = aus), ''neustart'' (PoE kurz aus und ein) und ''aktiv'' (Port ganz ein/aus), nur für ausdrücklich freigegebene Ports. Uplink-Ports werden nie geschaltet, PoE-Befehle nur an Ports mit PoE
   * Je Gerät Name im Topic und Auswahl der veröffentlichten Ports
   * Veröffentlicht nur **Änderungen** (alle 5 Minuten alle Werte)
   * MQTT-Broker des LoxBerry **oder eigener Broker**
@@ -47,6 +48,7 @@ Eigenschaften:
   - ZIP von der Release-Seite herunterladen oder im LoxBerry-Shop installieren.
   - LoxBerry → **Plugin-Verwaltung** → **Plugin installieren**. Die Installation startet den Dienst.
   - Plugin **Unifi2Lox** öffnen, Reiter **Verbindung**: Adresse des Gateways, Benutzer und Passwort eintragen, speichern. Der Reiter **Netzwerk** zeigt danach alle Geräte, Ports und Clients.
+  - Reiter **Clients** (optional): Schalter bei den Clients setzen, deren Online-Status der Miniserver bekommen soll, speichern.
   - Reiter **Geräte**: Namen vergeben, bei Bedarf die veröffentlichten Ports einschränken und Ports für Befehle freigeben, speichern.
   - Im **MQTT Gateway** das Abo ''unifi/#'' eintragen (siehe 5.1). Der Reiter **MQTT** zeigt, ob es steht.
 
@@ -64,7 +66,7 @@ Plugin entfernen. Dienst und RAM-Daten werden gelöscht.
 
 ===== 3. Konfiguration (LoxBerry) =====
 
-Reiter: **Verbindung · Geräte · Netzwerk · MQTT · Einbindung in Loxone · Test · Logdateien**. Änderungen wirken ohne Neustart.
+Reiter: **Verbindung · Geräte · Netzwerk · Clients · MQTT · Einbindung in Loxone · Test · Logdateien**. Änderungen wirken ohne Neustart.
 
 ==== 3.1 Verbindung ====
 
@@ -82,11 +84,22 @@ Falsche Zugangsdaten (auch ein Konto mit Zwei-Faktor-Anmeldung) wiederholt der D
 ^ Einstellung ^ Standard ^ Beschreibung ^
 | Aktiv | an | Gerät veröffentlichen |
 | Name im Topic | Name aus dem Gateway | nur a–z, 0–9, _ und - |
-| Ports veröffentlichen | alle | z. B. ''1-8, 22''. Je Port gibt es bis zu 6 Topics: bei vielen Ports lohnt eine Auswahl |
-| Befehle für Ports | gesperrt | z. B. ''4, 6, 11-13''. Nur diese PoE-Ports lassen sich aus Loxone schalten |
+| Ports veröffentlichen | alle | z. B. ''1-8, 22''. Je Port gibt es bis zu 7 Topics: bei vielen Ports lohnt eine Auswahl |
+| PoE-Befehle für Ports | gesperrt | z. B. ''4, 6, 11-13''. Nur diese PoE-Ports lassen sich aus Loxone mit ''poe'' und ''neustart'' schalten |
+| Ports ein/aus für Ports | gesperrt | z. B. ''9, 15''. Nur diese Ports lassen sich mit ''aktiv'' ganz abschalten und wieder einschalten (auch ohne PoE) |
 | Datenraten veröffentlichen | aus | ''rx_bps'' und ''tx_bps'' je Port (ändern sich ständig) |
 
-==== 3.3 Netzwerk, MQTT, Test und Logdateien ====
+==== 3.3 Clients ====
+
+Der Reiter **Clients** listet alle Clients des Gateways mit Name, MAC-Adresse, IP-Adresse, Verbindung (Switch und Port bzw. Access Point mit Band und WLAN) und Status. Verbundene Clients stehen oben; „alle bekannten anzeigen“ blendet auch die derzeit nicht verbundenen ein (zuletzt gesehen).
+
+^ Einstellung ^ Standard ^ Beschreibung ^
+| Online-Status per MQTT | aus | Für diesen Client wird ''unifi/client/<name>/online'' gemeldet: 1 = verbunden, 0 = nicht verbunden (auch wenn der Client gerade nicht im Netz ist) |
+| Name im Topic | Name aus dem Gateway | nur a–z, 0–9, _ und -; der Vorschlag wird beim Speichern festgeschrieben (ändert sich der Name im Gateway später, bleibt das Topic gleich), ohne Namen ''client_<Ende der MAC>'' |
+
+Gespeichert werden nur die gewählten Clients (MAC-Adresse und Name im Topic). Namen und IP-Adressen aller anderen Clients bleiben im Arbeitsspeicher, IP-Adressen gehen nie nach MQTT. Das Gateway behält WLAN-Clients nach dem Trennen noch einige Zeit in seiner Liste, der Wechsel auf 0 kann deshalb einige Minuten dauern.
+
+==== 3.4 Netzwerk, MQTT, Test und Logdateien ====
 
 Der Reiter **Netzwerk** zeigt je Gerät die Ports mit Link, PoE-Leistung und den angeschlossenen Clients, je Access Point die WLAN-Clients mit Band und Signal. Die Seite aktualisiert sich nicht von selbst. Der Reiter MQTT zeigt das **Gateway-Abo** und die Verbindung zum Broker. Im Reiter Test gibt es die Selbstprüfung (mit einer eigenen, kurzen Sitzung am Gateway, nur lesend) und den Dienst-Neustart.
 
@@ -101,11 +114,13 @@ Schema ''unifi/<gerät>/<wert>'' und ''unifi/<gerät>/port<nr>/<wert>'', Zahlen 
 | ''clients_gast'', ''clients_2g'', ''clients_5g'', ''clients_6g'' | Access Points: Gäste und Clients je Funkband |
 | ''poe_gesamt_w'', ''poe_max_w'' | Geräte mit PoE: aktuelle Leistung und Budget in W |
 | ''port<nr>/up'', ''speed_mbit'' | Link und Geschwindigkeit (0 ohne Link) |
+| ''port<nr>/aktiv'' | Port eingeschaltet (0 = abgeschaltet) |
 | ''port<nr>/clients'' | Clients, die an diesem Port hängen |
 | ''port<nr>/poe_an'', ''poe_w'', ''poe_ma'' | PoE-Ports: liefert Strom, Leistung (W), Strom (mA) |
 | ''port<nr>/rx_bps'', ''tx_bps'' | Datenrate (nur mit der Option „Datenraten“) |
 | ''unifi/netz/clients'', ''clients_kabel'', ''clients_wlan'' | Clients im ganzen Netz |
 | ''unifi/netz/poe_gesamt_w'' | PoE aller Geräte zusammen |
+| ''unifi/client/<name>/online'' | nur für im Reiter „Clients“ gewählte Clients: 1 = verbunden, 0 = nicht verbunden |
 | ''unifi/status/ok'' | 1 = Anmeldung und letzte Abfrage in Ordnung |
 | ''unifi/status/zaehler'' | Lebenszeichen 0–999, zählt alle 10 s |
 | ''unifi/status/ts'' | Zeitstempel des letzten Lebenszeichens |
@@ -128,8 +143,9 @@ Ab Werk gesperrt, im Reiter //Geräte// je Port freizugeben. Virtueller Ausgang:
 ^ Befehl ^ Wert ^ Wirkung ^
 | ''poe'' | 1 oder 0 | PoE am Port ein oder aus |
 | ''neustart'' | 1 | PoE am Port kurz aus- und wieder einschalten |
+| ''aktiv'' | 1 oder 0 | Port ganz ein oder aus (nicht nur PoE); 1 stellt die vorherige Einstellung wieder her. Eigene Freigabe „Ports ein/aus“ |
 
-**Quittung:** Unter ''unifi/befehl/<gerät>/port<nr>/<befehl>/quittung'' meldet das Plugin zuerst ''angenommen'' und dann ''ausgefuehrt'' oder ''abgelehnt: <Grund>''. ''ausgefuehrt'' heißt „vom Gateway angenommen“: **PoE aus wirkt nach etwa 12 Sekunden, nach PoE ein liefert der Port erst nach bis zu etwa einer Minute wieder Strom** (''poe_an'' zeigt es). Höchstens ein Befehl je Sekunde. **PoE aus oder Neustart schaltet das angeschlossene Gerät stromlos** (Access Point, Kamera, Telefon).
+**Quittung:** Unter ''unifi/befehl/<gerät>/port<nr>/<befehl>/quittung'' meldet das Plugin zuerst ''angenommen'' und dann ''ausgefuehrt'' oder ''abgelehnt: <Grund>''. ''ausgefuehrt'' heißt „vom Gateway angenommen“: **PoE aus wirkt nach etwa 12 Sekunden, nach PoE ein liefert der Port erst nach bis zu etwa einer Minute wieder Strom** (''poe_an'' zeigt es). Höchstens ein Befehl je Sekunde. **PoE aus oder Neustart schaltet das angeschlossene Gerät stromlos** (Access Point, Kamera, Telefon), **ein abgeschalteter Port trennt jedes Gerät vom Netz** (''port<nr>/aktiv'' zeigt den Zustand). Das Ein- und Ausschalten ganzer Ports ist an einem Port des Cloud Gateways geprüft (Wirkung nach etwa 10 Sekunden), an Switch-Ports noch nicht.
 
 ===== 6. Tipps & Tricks =====
 

@@ -3,5 +3,8 @@
 // Umgebung: STUB_INDEX (index.php), STUB_BIN, STUB_CONFIG, STUB_LOG, STUB_SYSCONFIG, STUB_UDP, <PLUGIN>_DEV_DIR.
 $_GET['tab'] = $argv[1] ?? 'einstellungen';
 $_SERVER['REQUEST_METHOD'] = 'GET';
+if (getenv('STUB_ALLE')) {
+    $_GET['alle'] = '1';
+}
 $_SERVER['SERVER_ADDR'] = '192.0.2.25';
 include (string)getenv('STUB_INDEX');

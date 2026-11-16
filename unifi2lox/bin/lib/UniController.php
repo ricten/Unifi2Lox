@@ -218,6 +218,12 @@ final class UniController
         return $this->api('GET', $this->seitenPfad('stat/sta'));
     }
 
+    /** Alle dem Gateway bekannten Clients, auch die gerade nicht verbundenen (rest/user). */
+    public function bekannteClients(): array
+    {
+        return $this->api('GET', $this->seitenPfad('rest/user'));
+    }
+
     /**
      * PoE-Modus eines Ports setzen ('auto' = an, 'off' = aus). Das Gateway verlangt die komplette Liste port_overrides des Geraets,
      * deshalb wird die bisherige Liste uebernommen und nur der eine Eintrag geaendert.
@@ -248,6 +254,43 @@ final class UniController
             $ov[] = $neu;
         }
         return $this->api('PUT', $this->seitenPfad('rest/device/' . rawurlencode($id)), ['port_overrides' => $ov]);
+    }
+
+    /**
+     * Port ganz ein- oder ausschalten (Weiterleitung "disabled"), siehe UniBefehle::overridesAktiv().
+     * @param array $dev Rohdaten des Geraets aus stat/device
+     * @param array $merk gemerkte Werte vor dem Abschalten (forward, native_networkconf_id, tagged_vlan_mgmt, port_security_enabled)
+     * @return array{ok:bool,status:int,daten:array,text:string,vorher:array,aenderung:bool}
+     */
+    public function portAktiv(array $dev, int $port, bool $an, array $merk): array
+    {
+        $id = (string)($dev['_id'] ?? '');
+        $n = UniBefehle::overridesAktiv($dev, $port, $an, $merk);
+        if ($id === '' || !$n['ok']) {
+            return ['ok' => false, 'status' => 0, 'daten' => [], 'text' => $id === '' ? 'Gerät unbekannt' : $n['text'], 'vorher' => [], 'aenderung' => false];
+        }
+        if (!$n['aenderung']) {                              // der Port ist schon so
+            return ['ok' => true, 'status' => 200, 'daten' => [], 'text' => '', 'vorher' => [], 'aenderung' => false];
+        }
+        $r = $this->api('PUT', $this->seitenPfad('rest/device/' . rawurlencode($id)), ['port_overrides' => $n['overrides']]);
+        if (!$r['ok']) {
+            return $r + ['vorher' => [], 'aenderung' => false];
+        }
+        // Das Gateway nimmt auch Aenderungen an, die es danach verwirft: neu lesen und pruefen
+        $neu = $this->geraete();
+        $forward = '';
+        foreach ($neu['ok'] ? $neu['daten'] : [] as $d) {
+            if ((string)($d['_id'] ?? '') === $id) {
+                $forward = UniBefehle::portForward($d, $port);
+            }
+        }
+        if (($forward === 'disabled') === $an) {
+            if (is_array($dev['port_overrides'] ?? null)) {   // urspruenglichen Stand wiederherstellen (andere Felder koennten uebernommen worden sein)
+                $this->api('PUT', $this->seitenPfad('rest/device/' . rawurlencode($id)), ['port_overrides' => $dev['port_overrides']]);
+            }
+            return ['ok' => false, 'status' => 200, 'daten' => [], 'text' => 'Das Gateway hat die Änderung nicht übernommen (die Einstellung des Ports blieb unverändert)', 'vorher' => [], 'aenderung' => false];
+        }
+        return $r + ['vorher' => $n['vorher'], 'aenderung' => true];
     }
 
     /** PoE eines Ports kurz aus- und wieder einschalten (power-cycle). */

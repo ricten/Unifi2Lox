@@ -1,6 +1,6 @@
 # Unifi2Lox
 
-LoxBerry-Plugin für **UniFi-Netzwerkgeräte** (Cloud Gateway, Dream Machine, Switches, Access Points). Es meldet sich lokal am Gateway an, liest **alle Ports** mit Link und **PoE-Leistung je Port**, zeigt, **welche Clients an welchem Port** hängen und **wie viele Clients je Access Point** verbunden sind, und stellt die Werte als **MQTT-Topics** auf dem MQTT-Broker des LoxBerry bereit. Das LoxBerry-MQTT-Gateway macht daraus **virtuelle Eingänge** für den Loxone Miniserver. In der Gegenrichtung nimmt das Plugin **Befehle** aus Loxone an: PoE am Port ein/aus und PoE-Neustart.
+LoxBerry-Plugin für **UniFi-Netzwerkgeräte** (Cloud Gateway, Dream Machine, Switches, Access Points). Es meldet sich lokal am Gateway an, liest **alle Ports** mit Link und **PoE-Leistung je Port**, zeigt, **welche Clients an welchem Port** hängen und **wie viele Clients je Access Point** verbunden sind, und stellt die Werte als **MQTT-Topics** auf dem MQTT-Broker des LoxBerry bereit. Das LoxBerry-MQTT-Gateway macht daraus **virtuelle Eingänge** für den Loxone Miniserver. In der Gegenrichtung nimmt das Plugin **Befehle** aus Loxone an: PoE am Port ein/aus, PoE-Neustart und Port ganz ein/aus.
 
 Ersetzt den ioBroker-Adapter für UniFi. Spezifikation und Messbefunde: [SPEZIFIKATION.md](SPEZIFIKATION.md).
 
@@ -17,6 +17,7 @@ Switch / AP  <->  UniFi-Gateway  <->  Unifi2Lox (LoxBerry)  ->  MQTT-Broker  -> 
 | Anmeldung (UniFi OS), Sitzung, CSRF-Token | an einem **Cloud Gateway** geprüft (nur lesend) |
 | Ports, PoE je Port, Clients je Port, Clients je Access Point | an einem Cloud Gateway mit einem 24-Port-PoE-Switch und zwei Access Points geprüft (nur lesend): alle Clients lassen sich einem Port oder Access Point zuordnen, die Summen stimmen |
 | **PoE-Befehle** (`poe`, `neustart`) | am Cloud Gateway an **einem Kamera-Port** des Switches geprüft (2026-11-14): `poe 0` schaltet das Gerät nach etwa 12 s stromlos, `poe 1` stellt es wieder her (die Rückkehr des PoE dauert bis etwa eine Minute), `neustart` wirkt bei anliegendem PoE; die Liste `port_overrides` blieb danach unverändert. Außerdem gegen ein nachgebildetes Gateway getestet |
+| **Port ein/aus** (`aktiv`) | am Cloud Gateway an **Port 2 des Gateways** geprüft (2026-11-16): aus, ein mit Merker (Eintrag danach exakt wie vorher), aus; Wirkung nach etwa 10 s. Ports eines Switches und Ports mit angeschlossenem Gerät **noch nicht** geprüft. Ein `forward` allein verwirft das Gateway, das Plugin setzt wie die Oberfläche vier Felder gemeinsam |
 | Klassische Controller-Software (ohne UniFi OS) | nur als Rückfall eingebaut, ungeprüft |
 | Tests | 190 automatische Prüfungen gegen ein Fake-Gateway, unter PHP 7.4, 8.2, 8.3 und 8.4 |
 
@@ -27,7 +28,8 @@ Das Plugin nutzt die **inoffizielle** Schnittstelle des Network-Dienstes (diesel
 - **Ports:** Link, Geschwindigkeit und Anzahl der Clients je Port, optional Datenraten. UniFi-Geräte an Ports (z. B. ein Access Point am Switch) erkennt das Plugin.
 - **PoE:** Leistung (W), Strom (mA) und „liefert Strom“ je Port; je Gerät Gesamtleistung und PoE-Budget, dazu die Summe im ganzen Netz.
 - **Clients:** je Port (Kabel), je Access Point (gesamt, Gäste, je Funkband 2,4/5/6 GHz) und im ganzen Netz (gesamt, Kabel, WLAN). Die **Namen** der Clients je Port und je Access Point zeigt die Weboberfläche im Reiter „Netzwerk“; nach MQTT gehen nur Zähler.
-- **Befehle aus Loxone** (ab Werk gesperrt, mit Quittung): `poe` (1 = ein, 0 = aus) und `neustart` (PoE kurz aus und ein), nur für **ausdrücklich freigegebene Ports**. Uplink-Ports und Ports ohne PoE werden nie geschaltet.
+- **Client-Liste mit IP** (Reiter „Clients“): alle Clients des Gateways (auch die derzeit nicht verbundenen); je Client lässt sich wählen, ob sein **Online-Status** (`unifi/client/<name>/online`, 1/0) per MQTT gemeldet wird. Namen und IP-Adressen anderer Clients gehen nie nach MQTT.
+- **Befehle aus Loxone** (ab Werk gesperrt, mit Quittung): `poe` (1 = ein, 0 = aus), `neustart` (PoE kurz aus und ein) und `aktiv` (Port ganz ein/aus, auch ohne PoE), nur für **ausdrücklich freigegebene Ports** (PoE-Befehle und Ein/Aus haben je eine eigene Freigabe). Uplink-Ports werden nie geschaltet, PoE-Befehle nur an Ports mit PoE.
 - Je Gerät Name im Topic und Auswahl der veröffentlichten Ports (viele Ports = viele Topics). Veröffentlicht nur **Änderungen** (alle 5 Minuten alle Werte). Lebenszeichen `unifi/status/ok`, `zaehler`, `ts`, Autostart, Watchdog, Healthcheck, Prüfung des Gateway-Abos.
 - Weboberfläche im LoxBerry Design System, **ohne JavaScript**.
 
@@ -36,8 +38,9 @@ Das Plugin nutzt die **inoffizielle** Schnittstelle des Network-Dienstes (diesel
 1. ZIP von der Release-Seite laden (oder im LoxBerry-Shop installieren), in der **Plugin-Verwaltung** installieren. Voraussetzung: LoxBerry 4.0 mit PHP 7.4 oder neuer, mit curl und openssl.
 2. Am Gateway ein **eigenes lokales Konto** anlegen (UniFi OS: *Admins & Users*, „nur lokaler Zugriff“, ohne Zwei-Faktor-Anmeldung). Für reines Lesen genügt für Network die Rolle „View Only“; für Befehle braucht das Konto „Full Management“.
 3. Plugin öffnen, Reiter **Verbindung**: Adresse des Gateways, Benutzer und Passwort eintragen, speichern. Der Reiter **Netzwerk** zeigt danach alle Geräte, Ports und Clients.
-4. Reiter **Geräte**: Namen vergeben, bei Bedarf die veröffentlichten Ports einschränken und Ports für Befehle freigeben, speichern.
-5. Im **MQTT Gateway** das Abo `unifi/#` von Hand eintragen (Gateway V2 liest die Abo-Dateien der Plugins nicht; das Plugin prüft es im Reiter MQTT). `unifi/status/ok` und `unifi/status/zaehler` im Gateway auf *No Cache* stellen.
+4. Reiter **Clients**: bei Clients, deren Online-Status der Miniserver bekommen soll, den Schalter setzen und speichern.
+5. Reiter **Geräte**: Namen vergeben, bei Bedarf die veröffentlichten Ports einschränken und Ports für Befehle freigeben, speichern.
+6. Im **MQTT Gateway** das Abo `unifi/#` von Hand eintragen (Gateway V2 liest die Abo-Dateien der Plugins nicht; das Plugin prüft es im Reiter MQTT). `unifi/status/ok` und `unifi/status/zaehler` im Gateway auf *No Cache* stellen.
 
 ## Topics
 
@@ -45,7 +48,7 @@ Schema `unifi/<gerät>/…` und `unifi/<gerät>/port<nr>/…`, Zahlen mit Punkt 
 
 ## Befehle
 
-Virtueller Ausgang in Loxone: Adresse `/dev/udp/<LoxBerry-IP>/<UDP-Port>` (Standard 11884), Befehl bei EIN `publish unifi/befehl/<gerät>/port<nr>/<befehl> <wert>`. Quittung unter `…/quittung`: `angenommen`, dann `ausgefuehrt` oder `abgelehnt: <Grund>`. **PoE aus oder Neustart schaltet das angeschlossene Gerät stromlos** (Access Point, Kamera, Telefon): nur Ports freigeben, die dafür taugen.
+Virtueller Ausgang in Loxone: Adresse `/dev/udp/<LoxBerry-IP>/<UDP-Port>` (Standard 11884), Befehl bei EIN `publish unifi/befehl/<gerät>/port<nr>/<befehl> <wert>`. Quittung unter `…/quittung`: `angenommen`, dann `ausgefuehrt` oder `abgelehnt: <Grund>`. **PoE aus oder Neustart schaltet das angeschlossene Gerät stromlos** (Access Point, Kamera, Telefon), **ein abgeschalteter Port (`aktiv` 0) trennt jedes Gerät vom Netz**: nur Ports freigeben, die dafür taugen. `aktiv` 1 stellt die vorherige Einstellung des Ports wieder her; `port<nr>/aktiv` zeigt den Zustand.
 
 ## Sicherheit und Datenschutz
 
