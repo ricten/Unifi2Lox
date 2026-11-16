@@ -106,6 +106,12 @@ LBWeb::lbheader('Unifi2Lox ' . AppVersion::CURRENT, '', '', true);
  .uni th a { color:inherit; text-decoration:none; } .uni th a:hover { text-decoration:underline; }
  .uni-led-ok { background:var(--lb-success,#2ecc40); } .uni-led-fehler { background:var(--lb-danger,#e74c3c); } .uni-led-aus { background:var(--lb-gray-400,#bbb); }
  .uni .uni-kl { font-size:90%; }
+ .uni .uni-fest { table-layout:fixed; width:100%; margin-top:8px; }                  /* feste Spaltenbreiten: gleiche Tabellen sind in allen Geräten gleich aufgebaut */
+ .uni .uni-fest td, .uni .uni-fest th { overflow:hidden; text-overflow:ellipsis; }
+ .uni .uni-fest-cl th:nth-child(1) { width:30%; } .uni .uni-fest-cl th:nth-child(2) { width:18%; } .uni .uni-fest-cl th:nth-child(3) { width:22%; }
+ .uni .uni-fest-cl th:nth-child(4) { width:14%; } .uni .uni-fest-cl th:nth-child(5) { width:16%; }
+ .uni .uni-fest-po th:nth-child(1) { width:18%; } .uni .uni-fest-po th:nth-child(2) { width:18%; } .uni .uni-fest-po th:nth-child(3) { width:14%; }
+ .uni .uni-fest-po th:nth-child(4) { width:50%; }
 </style>
 <div class="lb-content uni">
 <?php foreach ($meldungen as $m) { echo '<div class="lb-callout' . (str_starts_with($m, 'FEHLER') ? ' lb-callout-warning' : '') . '"><span class="' . (str_starts_with($m, 'FEHLER') ? 'fehler' : 'ok') . '">' . h($m) . '</span></div>'; } ?>
@@ -242,7 +248,7 @@ foreach ($modell['geraete'] as $g) {
         }
         echo '<p>Clients: <b>' . (int)$g['clients'] . '</b>' . ($b ? ' (' . h(implode(', ', $b)) . ')' : '') . ($g['clients_gast'] ? ', davon ' . (int)$g['clients_gast'] . ' Gäste' : '') . '</p>';
         if ($g['wlan_clients']) {
-            echo '<div class="lb-table-scroll"><table class="lb-table uni-kl"><tr><th>Client</th><th>IP</th><th>WLAN</th><th>Band</th><th>Signal</th></tr>';
+            echo '<div class="lb-table-scroll"><table class="lb-table uni-kl uni-fest uni-fest-cl"><tr><th>Client</th><th>IP</th><th>WLAN</th><th>Band</th><th>Signal</th></tr>';
             foreach ($g['wlan_clients'] as $c) {
                 echo '<tr><td>' . h($c['name']) . '</td><td>' . h($c['ip']) . '</td><td>' . h($c['essid'] ?? '') . '</td><td>' . h(str_replace('g', ' GHz', ($c['band'] ?? '') === '2g' ? '2,4g' : ($c['band'] ?? ''))) . '</td><td>' . (isset($c['signal']) ? (int)$c['signal'] . ' dBm' : '') . '</td></tr>';
             }
@@ -250,7 +256,7 @@ foreach ($modell['geraete'] as $g) {
         }
     }
     if ($g['ports']) {
-        echo '<div class="lb-table-scroll"><table class="lb-table uni-kl"><tr><th>Port</th><th>Link</th><th>PoE</th><th>Angeschlossen</th></tr>';
+        echo '<div class="lb-table-scroll"><table class="lb-table uni-kl uni-fest uni-fest-po"><tr><th>Port</th><th>Link</th><th>PoE</th><th>Angeschlossen</th></tr>';
         foreach ($g['ports'] as $p) {
             $link = ($p['aktiv'] ?? true) === false ? '<span class="uni-led uni-led-inaktiv" title="Port abgeschaltet"></span> inaktiv <span class="hinweis">(abgeschaltet)</span>' : ($p['up'] ? '<span class="uni-led uni-led-ok"></span> ' . ($p['speed'] >= 1000 ? h(UniDaten::zahl($p['speed'] / 1000, 1)) . ' Gbit/s' : (int)$p['speed'] . ' Mbit/s') : '<span class="uni-led uni-led-aus"></span> <span class="hinweis">kein Link</span>');
             $poe = !$p['poe'] ? '<span class="hinweis">-</span>' : ($p['poe_an'] ? '<b>' . h(UniDaten::zahl($p['poe_w'], 1)) . ' W</b> <span class="hinweis">(' . h(UniDaten::zahl($p['poe_ma'], 0)) . ' mA)</span>' : '<span class="hinweis">' . ($p['poe_modus'] === 'off' ? 'aus' : 'keine Last') . '</span>');

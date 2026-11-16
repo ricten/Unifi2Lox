@@ -2,6 +2,11 @@
 
 Alle Änderungen an diesem Plugin. Schema: MAJOR.MINOR.PATCH.
 
+## [0.3.2] - 2026-11-16
+
+### Behoben
+- Reiter „Netzwerk“: Die Tabellen der Clients und der Ports haben jetzt **feste Spaltenbreiten** (gleich in jedem Gerät) und etwas Abstand zueinander. Vorher richtete jede Tabelle die Spalten nach ihrem Inhalt aus, sodass die Spalten (IP, WLAN, Band …) von Gerät zu Gerät versetzt standen.
+
 ## [0.3.1] - 2026-11-16
 
 ### Geändert
