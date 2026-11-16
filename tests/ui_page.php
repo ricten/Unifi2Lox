@@ -6,5 +6,9 @@ $_SERVER['REQUEST_METHOD'] = 'GET';
 if (getenv('STUB_ALLE')) {
     $_GET['alle'] = '1';
 }
+if (getenv('STUB_GET')) {                     // weitere Abfrageparameter, z. B. sort=ip&dir=desc
+    parse_str((string)getenv('STUB_GET'), $zusatz);
+    $_GET = $zusatz + $_GET;
+}
 $_SERVER['SERVER_ADDR'] = '192.0.2.25';
 include (string)getenv('STUB_INDEX');

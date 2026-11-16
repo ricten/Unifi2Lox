@@ -102,7 +102,8 @@ LBWeb::lbheader('Unifi2Lox ' . AppVersion::CURRENT, '', '', true);
  .uni .uni-schmal { width:90px !important; } .uni .uni-mittel { width:170px !important; } .uni .uni-breit { width:280px !important; }
  .uni-led { display:inline-block; width:14px; height:14px; border-radius:3px; vertical-align:middle; border:1px solid rgba(0,0,0,.35); }
  .uni-warn { color:var(--lb-warning,#b9770e); }
- .uni-led-inaktiv { background:var(--lb-warning,#e0a800); }
+ .uni-led-inaktiv { background:#fff; }
+ .uni th a { color:inherit; text-decoration:none; } .uni th a:hover { text-decoration:underline; }
  .uni-led-ok { background:var(--lb-success,#2ecc40); } .uni-led-fehler { background:var(--lb-danger,#e74c3c); } .uni-led-aus { background:var(--lb-gray-400,#bbb); }
  .uni .uni-kl { font-size:90%; }
 </style>
@@ -214,7 +215,7 @@ foreach ($modell['geraete'] as $g) {
     if ($g['ports']) {
         echo '<div class="lb-table-scroll"><table class="lb-table uni-kl"><tr><th>Port</th><th>Link</th><th>PoE</th><th>Angeschlossen</th></tr>';
         foreach ($g['ports'] as $p) {
-            $link = ($p['aktiv'] ?? true) === false ? '<span class="uni-led uni-led-inaktiv" title="Port abgeschaltet"></span> <b>inaktiv</b> <span class="hinweis">(abgeschaltet)</span>' : ($p['up'] ? '<span class="uni-led uni-led-ok"></span> ' . ($p['speed'] >= 1000 ? h(UniDaten::zahl($p['speed'] / 1000, 1)) . ' Gbit/s' : (int)$p['speed'] . ' Mbit/s') : '<span class="uni-led uni-led-aus"></span> <span class="hinweis">kein Link</span>');
+            $link = ($p['aktiv'] ?? true) === false ? '<span class="uni-led uni-led-inaktiv" title="Port abgeschaltet"></span> inaktiv <span class="hinweis">(abgeschaltet)</span>' : ($p['up'] ? '<span class="uni-led uni-led-ok"></span> ' . ($p['speed'] >= 1000 ? h(UniDaten::zahl($p['speed'] / 1000, 1)) . ' Gbit/s' : (int)$p['speed'] . ' Mbit/s') : '<span class="uni-led uni-led-aus"></span> <span class="hinweis">kein Link</span>');
             $poe = !$p['poe'] ? '<span class="hinweis">-</span>' : ($p['poe_an'] ? '<b>' . h(UniDaten::zahl($p['poe_w'], 1)) . ' W</b> <span class="hinweis">(' . h(UniDaten::zahl($p['poe_ma'], 0)) . ' mA)</span>' : '<span class="hinweis">' . ($p['poe_modus'] === 'off' ? 'aus' : 'keine Last') . '</span>');
             $an = [];
             if ($p['gegenstelle'] !== '') {
@@ -257,19 +258,59 @@ foreach ($cl as $mac => $c) {
     }
     $zeilen[$mac] = $c;
 }
-uksort($zeilen, function ($a, $b) use ($zeilen, $anzeigeName) {
+// Sortierung über Links in den Spaltenköpfen (die Seite hat kein JavaScript): ?sort=<spalte>&dir=asc|desc
+$sortSpalten = ['status', 'auswahl', 'topic', 'name', 'ip', 'ort'];
+$sortGesetzt = in_array($_GET['sort'] ?? '', $sortSpalten, true);
+$sort = $sortGesetzt ? (string)$_GET['sort'] : 'status';
+$richtung = ($_GET['dir'] ?? '') === 'desc' ? 'desc' : 'asc';
+$qs = ($sortGesetzt ? '&amp;sort=' . $sort . '&amp;dir=' . $richtung : '') . ($alleZeigen ? '&amp;alle=1' : '');
+$topicVon = function (string $mac, array $c) use ($uni, $cNamen): string {
+    return isset($uni['clients'][$mac]) ? (string)($cNamen[$mac] ?? '') : ($c['name'] !== '' ? Util::name($c['name']) : 'client_' . substr($mac, -6));
+};
+$ipZahl = function (string $ip): float {
+    $l = ip2long($ip);
+    return $l === false ? 0.0 : (float)sprintf('%u', $l);
+};
+$standard = function (string $a, string $b) use ($zeilen, $anzeigeName): int {      // online zuerst, dann zuletzt gesehene, dann nach Namen
     $x = $zeilen[$a];
     $y = $zeilen[$b];
     if ($x['online'] !== $y['online']) {
         return $x['online'] ? -1 : 1;
     }
     if (!$x['online'] && $x['zuletzt'] !== $y['zuletzt']) {
-        return $y['zuletzt'] <=> $x['zuletzt'];                 // zuletzt gesehene zuerst
+        return $y['zuletzt'] <=> $x['zuletzt'];
     }
     return strcasecmp($anzeigeName($a, $x), $anzeigeName($b, $y));
+};
+uksort($zeilen, function ($a, $b) use ($zeilen, $uni, $sort, $richtung, $standard, $topicVon, $anzeigeName, $ipZahl) {
+    $x = $zeilen[$a];
+    $y = $zeilen[$b];
+    $r = 0;
+    if ($sort === 'ip' || $sort === 'ort') {
+        $feld = $sort === 'ip' ? 'ip' : 'ort';
+        if (($x[$feld] === '') !== ($y[$feld] === '')) {
+            return $x[$feld] === '' ? 1 : -1;                  // leere Werte stehen in beiden Richtungen am Ende
+        }
+        $r = $sort === 'ip' ? $ipZahl($x['ip']) <=> $ipZahl($y['ip']) : strnatcasecmp($x['ort'], $y['ort']);
+    } elseif ($sort === 'auswahl') {
+        $r = (int)isset($uni['clients'][$b]) <=> (int)isset($uni['clients'][$a]);          // aufsteigend: gewählte zuerst
+    } elseif ($sort === 'topic') {
+        $r = strnatcasecmp($topicVon($a, $x), $topicVon($b, $y));
+    } elseif ($sort === 'name') {
+        $r = strnatcasecmp($anzeigeName($a, $x), $anzeigeName($b, $y));
+    } else {
+        $r = $standard($a, $b);
+        return $richtung === 'desc' ? -$r : $r;
+    }
+    return $r !== 0 ? ($richtung === 'desc' ? -$r : $r) : $standard($a, $b);
 });
+$kopf = function (string $spalte, string $text) use ($basis, $sort, $richtung, $alleZeigen): string {
+    $dir = ($sort === $spalte && $richtung === 'asc') ? 'desc' : 'asc';
+    $pfeil = $sort === $spalte ? ($richtung === 'asc' ? ' ▲' : ' ▼') : '';
+    return '<th><a href="' . $basis . 'clients&amp;sort=' . $spalte . '&amp;dir=' . $dir . ($alleZeigen ? '&amp;alle=1' : '') . '" title="Nach dieser Spalte sortieren">' . h($text) . '</a>' . $pfeil . '</th>';
+};
 ?>
-<form method="post" action="<?= $basis ?>clients<?= $alleZeigen ? '&amp;alle=1' : '' ?>">
+<form method="post" action="<?= $basis ?>clients<?= $qs ?>">
 <input type="hidden" name="token" value="<?= h($token) ?>">
 <div class="lb-card">
 <h3>Clients</h3>
@@ -278,10 +319,10 @@ uksort($zeilen, function ($a, $b) use ($zeilen, $anzeigeName) {
 <?php } else { ?>
 <p class="hinweis">Alle Clients des Gateways mit IP-Adresse. Bei den hier gewählten Clients meldet das Plugin den <b>Online-Status</b> (1 = verbunden, 0 = nicht verbunden) unter <code>unifi/client/&lt;name&gt;/online</code> an MQTT; für den Miniserver ist das ein virtueller Eingang je Client.
 Die Liste zeigt die gerade verbundenen und die gewählten Clients.
-<?php if ($alleZeigen) { ?>Es sind auch alle weiteren bekannten Clients aufgeführt (<a href="<?= $basis ?>clients">nur verbundene und gewählte anzeigen</a>).
-<?php } elseif ($offlineBekannt > 0) { ?><?= (int)$offlineBekannt ?> weitere, derzeit nicht verbundene Clients sind ausgeblendet (<a href="<?= $basis ?>clients&amp;alle=1">alle bekannten anzeigen</a>).<?php } ?></p>
+<?php if ($alleZeigen) { ?>Es sind auch alle weiteren bekannten Clients aufgeführt (<a href="<?= $basis ?>clients<?= $sortGesetzt ? '&amp;sort=' . $sort . '&amp;dir=' . $richtung : '' ?>">nur verbundene und gewählte anzeigen</a>).
+<?php } elseif ($offlineBekannt > 0) { ?><?= (int)$offlineBekannt ?> weitere, derzeit nicht verbundene Clients sind ausgeblendet (<a href="<?= $basis ?>clients<?= $sortGesetzt ? '&amp;sort=' . $sort . '&amp;dir=' . $richtung : '' ?>&amp;alle=1">alle bekannten anzeigen</a>).<?php } ?></p>
 <div class="lb-table-scroll"><table class="lb-table">
-<tr><th>Online-Status per MQTT</th><th>Name im Topic</th><th>Client</th><th>IP-Adresse</th><th>Verbindung</th><th>Status</th></tr>
+<tr><?= $kopf('auswahl', 'Online-Status per MQTT') . $kopf('topic', 'Name im Topic') . $kopf('name', 'Client') . $kopf('ip', 'IP-Adresse') . $kopf('ort', 'Verbindung') . $kopf('status', 'Status') ?></tr>
 <?php foreach ($zeilen as $mac => $c) {
     $gewaehlt = isset($uni['clients'][$mac]);
     $macText = implode(':', str_split($mac, 2));

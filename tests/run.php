@@ -674,7 +674,7 @@ $devsUi[1]['port_table'][14]['enable'] = false;          // Port 15 des Switches
 $devsUi[1]['port_table'][14]['forward'] = 'disabled';
 Util::jsonSave("$uiDir/dev/run/netz.json", ['zeit' => time(), 'modell' => $m0 = UniDaten::modell($devsUi, fx_clients()), 'bekannt' => UniDaten::bekannte(fx_bekannte())]);
 [$o, $e] = $uiPage('netz');
-check('UI Netzwerk: abgeschalteter Port steht als inaktiv da (genau einer), andere Ports ohne Link nicht', [substr_count($o, 'uni-led-inaktiv" title="Port abgeschaltet"></span> <b>inaktiv</b>'), str_contains($o, 'kein Link')], [1, true]);
+check('UI Netzwerk: abgeschalteter Port steht als inaktiv da (genau einer), andere Ports ohne Link nicht', [substr_count($o, 'uni-led-inaktiv" title="Port abgeschaltet"></span> inaktiv <span'), str_contains($o, '<b>inaktiv'), str_contains($o, '.uni-led-inaktiv { background:#fff; }'), str_contains($o, 'kein Link')], [1, false, true, true]);
 check('UI Netzwerk: Geraete, Ports, PoE, Clients je Port, Access-Point-Clients', [str_contains($o, 'Switch Keller'), str_contains($o, 'US-24-250W'), str_contains($o, '6,2 W') || str_contains($o, '6.2 W'), str_contains($o, 'AP Wohnzimmer</b> (UniFi-Gerät)'), str_contains($o, 'WLAN-Client 1'),
     str_contains($o, '4 im 2,4 GHz'), str_contains($o, 'Kabel-Client 3'), str_contains($o, '19 Clients (11 Kabel, 8 WLAN)'), $bad($o, $e)], [true, true, true, true, true, true, true, true, false]);
 [$o, $e] = $uiPage('clients');
@@ -686,6 +686,32 @@ check('UI Clients: Schalter und Namensfeld je Zeile, Auswahl aus der Konfigurati
     [true, true, true, true, true, true, true]);
 [$o] = $uiPage('clients', ['STUB_ALLE' => '1']);
 check('UI Clients: mit "alle bekannten" auch die nicht verbundenen', [str_contains($o, 'handy-gast'), str_contains($o, '192.0.2.202'), str_contains($o, '(ohne Namen)'), str_contains($o, 'nur verbundene und gewählte anzeigen')], [true, true, true, true]);
+$pos = fn(string $o, string $s) => strpos($o, $s);
+[$o0] = $uiPage('clients');
+check('UI Clients: Spaltenkoepfe sind Sortierlinks (ohne JavaScript), Standard = Status aufsteigend mit Pfeil', [str_contains($o0, 'clients&amp;sort=ip&amp;dir=asc'), str_contains($o0, 'clients&amp;sort=auswahl&amp;dir=asc'), str_contains($o0, 'clients&amp;sort=status&amp;dir=desc'),
+    str_contains($o0, 'Status</a> ▲'), substr_count($o0, ' ▲') + substr_count($o0, ' ▼')], [true, true, true, true, 1]);
+// Standardreihenfolge: verbundene zuerst nach Namen (host1 vor Kabel-Client 3), dann nicht verbundene (Alter Drucker, gewaehlt)
+check('UI Clients: Standardsortierung (online zuerst, nach Namen)', [$pos($o0, '02:00:00:00:10:01') < $pos($o0, '02:00:00:00:10:03'), $pos($o0, '02:00:00:00:10:03') < $pos($o0, '02:00:00:00:30:01')], [true, true]);
+[$o] = $uiPage('clients', ['STUB_GET' => 'sort=ip&dir=asc']);
+check('UI Clients: nach IP aufsteigend (numerisch: .21 vor .100), Link kehrt die Richtung um, Pfeil an der Spalte', [$pos($o, '192.0.2.13') < $pos($o, '192.0.2.21'), $pos($o, '192.0.2.21') < $pos($o, '192.0.2.100'), str_contains($o, 'clients&amp;sort=ip&amp;dir=desc'), str_contains($o, 'IP-Adresse</a> ▲'),
+    str_contains($o, 'action="?tab=clients&amp;sort=ip&amp;dir=asc"')], [true, true, true, true, true]);
+[$o] = $uiPage('clients', ['STUB_GET' => 'sort=ip&dir=desc']);
+check('UI Clients: nach IP absteigend, leere IP bleibt am Ende (unbekannter gewaehlter Client)', [$pos($o, '192.0.2.100') < $pos($o, '192.0.2.21'), $pos($o, '192.0.2.21') < $pos($o, '192.0.2.13'), $pos($o, '02:00:00:00:99:99') > $pos($o, '192.0.2.13'),
+    str_contains($o, 'IP-Adresse</a> ▼')], [true, true, true, true]);
+[$o] = $uiPage('clients', ['STUB_GET' => 'sort=auswahl&dir=asc']);
+check('UI Clients: nach Auswahl (gewaehlte zuerst)', [$pos($o, '02:00:00:00:10:03') < $pos($o, '02:00:00:00:10:01')], [true]);
+[$o] = $uiPage('clients', ['STUB_GET' => 'sort=auswahl&dir=desc']);
+check('UI Clients: nach Auswahl absteigend (nicht gewaehlte zuerst)', [$pos($o, '02:00:00:00:10:01') < $pos($o, '02:00:00:00:10:03')], [true]);
+[$o] = $uiPage('clients', ['STUB_GET' => 'sort=name&dir=desc']);
+check('UI Clients: nach Client-Name absteigend (Kabel-Client 3 vor host1)', [$pos($o, '02:00:00:00:10:03') < $pos($o, '02:00:00:00:10:01')], [true]);
+[$o] = $uiPage('clients', ['STUB_GET' => 'sort=ort&dir=asc']);
+check('UI Clients: nach Verbindung (AP Wohnzimmer vor Switch Keller), ohne Ort am Ende', [$pos($o, 'AP Wohnzimmer') < $pos($o, 'Switch Keller · Port 1'), $pos($o, 'Switch Keller · Port 1') < $pos($o, '02:00:00:00:99:99')], [true, true]);
+[$o] = $uiPage('clients', ['STUB_GET' => 'sort=topic&dir=asc']);
+check('UI Clients: nach Name im Topic aufsteigend (host1 vor kabel-client_3)', [$pos($o, '02:00:00:00:10:01') < $pos($o, '02:00:00:00:10:03')], [true]);
+[$o] = $uiPage('clients', ['STUB_GET' => 'sort=boese&dir=quer']);
+check('UI Clients: ungueltige Sortierangabe faellt auf die Standardsortierung zurueck', [str_contains($o, 'Status</a> ▲'), str_contains($o, 'boese')], [true, false]);
+[$o] = $uiPage('clients', ['STUB_GET' => 'sort=name&dir=asc', 'STUB_ALLE' => '1']);
+check('UI Clients: Sortierung bleibt bei "alle bekannten" und im Link zurueck erhalten', [str_contains($o, 'clients&amp;sort=ip&amp;dir=asc&amp;alle=1'), str_contains($o, 'tab=clients&amp;sort=name&amp;dir=asc">nur verbundene')], [true, true]);
 [$o] = $uiPage('geraete');
 check('UI Geraete: Name, Portauswahl, Befehlsfreigabe, Hinweis auf Stromlos', [str_contains($o, 'name="geraete[020000000002][name]" value="keller"'), str_contains($o, 'name="geraete[020000000002][ports]" value="1-8"'),
     str_contains($o, 'name="geraete[020000000002][befehle_ports]" value="11-13"'), str_contains($o, 'name="geraete[020000000001][befehle_ports]"'), str_contains($o, 'stromlos'), str_contains($o, 'class="lb-toggle"'), str_contains($o, 'name="geraete[020000000002][schalt_ports]" value="15, 16"'), str_contains($o, 'name="geraete[020000000001][schalt_ports]"')], [true, true, true, true, true, true, true, true]);

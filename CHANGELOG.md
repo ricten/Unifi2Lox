@@ -2,10 +2,16 @@
 
 Alle Änderungen an diesem Plugin. Schema: MAJOR.MINOR.PATCH.
 
+## [0.2.2] - 2026-11-16
+
+### Geändert
+- **Client-Tabelle sortierbar:** Ein Klick auf eine Spaltenüberschrift sortiert nach dieser Spalte (Auswahl, Name im Topic, Client, IP-Adresse numerisch, Verbindung, Status), ein zweiter Klick kehrt die Richtung um; ein Pfeil zeigt die Sortierung. Leere IP-Adressen und Verbindungen stehen immer am Ende. Die Sortierung bleibt nach dem Speichern und beim Umschalten auf „alle bekannten“ erhalten (Links statt JavaScript).
+- Abgeschaltete Ports stehen im Reiter „Netzwerk“ wie in der Oberfläche des Gateways mit weißem Kästchen und „inaktiv“ in normaler Schrift (nicht mehr orange und fett).
+
 ## [0.2.1] - 2026-11-16
 
 ### Geändert
-- Die Weboberfläche (Reiter „Netzwerk“) zeigt einen abgeschalteten Port jetzt als **inaktiv** (orange Anzeige, „abgeschaltet“) statt als „kein Link“. Das gilt für Ports, die per Befehl `aktiv` oder in der Oberfläche des Gateways abgeschaltet wurden (`port<nr>/aktiv` = 0).
+- Die Weboberfläche (Reiter „Netzwerk“) zeigt einen abgeschalteten Port jetzt als **inaktiv** („abgeschaltet“) statt als „kein Link“. Das gilt für Ports, die per Befehl `aktiv` oder in der Oberfläche des Gateways abgeschaltet wurden (`port<nr>/aktiv` = 0).
 
 ## [0.2.0] - 2026-11-16
 

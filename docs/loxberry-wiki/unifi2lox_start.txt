@@ -91,7 +91,7 @@ Falsche Zugangsdaten (auch ein Konto mit Zwei-Faktor-Anmeldung) wiederholt der D
 
 ==== 3.3 Clients ====
 
-Der Reiter **Clients** listet alle Clients des Gateways mit Name, MAC-Adresse, IP-Adresse, Verbindung (Switch und Port bzw. Access Point mit Band und WLAN) und Status. Verbundene Clients stehen oben; „alle bekannten anzeigen“ blendet auch die derzeit nicht verbundenen ein (zuletzt gesehen).
+Der Reiter **Clients** listet alle Clients des Gateways mit Name, MAC-Adresse, IP-Adresse, Verbindung (Switch und Port bzw. Access Point mit Band und WLAN) und Status. Verbundene Clients stehen oben; „alle bekannten anzeigen“ blendet auch die derzeit nicht verbundenen ein (zuletzt gesehen). Ein Klick auf eine Spaltenüberschrift sortiert die Tabelle (zweiter Klick: andere Richtung), z. B. nach der IP-Adresse.
 
 ^ Einstellung ^ Standard ^ Beschreibung ^
 | Online-Status per MQTT | aus | Für diesen Client wird ''unifi/client/<name>/online'' gemeldet: 1 = verbunden, 0 = nicht verbunden (auch wenn der Client gerade nicht im Netz ist) |
