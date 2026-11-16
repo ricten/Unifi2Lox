@@ -206,15 +206,29 @@ final class UniDaten
     }
 
     /**
-     * MQTT-Werte der ausgewaehlten Clients (Topic-Rest unter unifi/client/): <name>/online = 1 oder 0.
+     * MQTT-Werte der ausgewaehlten Clients (Topic-Rest unter unifi/client/), je nach den Schaltern des Clients:
+     *   <name>/online     1 = verbunden, 0 = nicht verbunden
+     *   <name>/ip         aktuelle IP (bei einem nicht verbundenen Client die zuletzt bekannte; ist keine bekannt, fehlt das Topic)
+     *   <name>/verbindung aktive Verbindung als Text (Switch und Port bzw. Access Point, Band und WLAN; "Kabel" oder "WLAN", wenn der Ort unbekannt ist; "nicht verbunden")
      * @param array<string,array> $anzeige Ergebnis von clientAnzeige()
      * @param array<string,string> $namen MAC => Name im Topic
+     * @param array<string,array> $auswahl MAC => Schalter (online, ip, verbindung), siehe UniConfig::clientSchalter()
      */
-    public static function clientWerte(array $anzeige, array $namen): array
+    public static function clientWerte(array $anzeige, array $namen, array $auswahl): array
     {
         $w = [];
         foreach ($namen as $mac => $name) {
-            $w[$name . '/online'] = !empty($anzeige[$mac]['online']) ? '1' : '0';
+            $f = UniConfig::clientSchalter(is_array($auswahl[$mac] ?? null) ? $auswahl[$mac] : []);
+            $c = $anzeige[$mac] ?? [];
+            if ($f['online']) {
+                $w[$name . '/online'] = !empty($c['online']) ? '1' : '0';
+            }
+            if ($f['ip'] && (string)($c['ip'] ?? '') !== '') {
+                $w[$name . '/ip'] = (string)$c['ip'];
+            }
+            if ($f['verbindung']) {
+                $w[$name . '/verbindung'] = empty($c['online']) ? 'nicht verbunden' : ((string)($c['ort'] ?? '') !== '' ? (string)$c['ort'] : (!empty($c['kabel']) ? 'Kabel' : 'WLAN'));
+            }
         }
         return $w;
     }
@@ -265,6 +279,120 @@ final class UniDaten
             }
         }
         return $w;
+    }
+
+    /**
+     * Internetverbindung (WAN) aus dem Gateway-Eintrag von stat/device (uplink, wan1, wan2) und stat/health (Subsystem wan: Provider, WAN-IP; www: Latenz, Speedtest).
+     * Gibt null zurueck, wenn es kein Gateway oder keine WAN-Daten gibt (nur Switches und Access Points).
+     * @param list<array> $devs stat/device
+     * @param list<array> $health stat/health (darf leer sein)
+     * @return array|null online, dauer (Sekunden der aktuellen Sitzung), anbieter, asn, ip, latenz, verfuegbarkeit, wan1_up, wan2_up, link_mbit, rx_bps, tx_bps, speedtest (null oder down/up/ping/ts)
+     */
+    public static function internet(array $devs, array $health): ?array
+    {
+        $gw = null;
+        foreach ($devs as $d) {
+            if (self::typ((string)($d['type'] ?? '')) === 'gateway') {
+                $gw = $d;
+                break;
+            }
+        }
+        if ($gw === null) {
+            return null;
+        }
+        $up = is_array($gw['uplink'] ?? null) ? $gw['uplink'] : [];
+        $w1 = is_array($gw['wan1'] ?? null) ? $gw['wan1'] : [];
+        $w2 = is_array($gw['wan2'] ?? null) ? $gw['wan2'] : [];
+        $wan = [];
+        $www = [];
+        foreach ($health as $h) {
+            if (is_array($h) && ($h['subsystem'] ?? '') === 'wan') {
+                $wan = $h;
+            } elseif (is_array($h) && ($h['subsystem'] ?? '') === 'www') {
+                $www = $h;
+            }
+        }
+        if (!$up && !$w1 && !$wan) {
+            return null;
+        }
+        $online = $up ? !empty($up['up']) : !empty($w1['up']);
+        $ip = trim((string)($wan['wan_ip'] ?? ''));
+        if ($ip === '') {
+            $ip = trim((string)($up['ip'] ?? ($w1['ip'] ?? '')));
+        }
+        $lat = $www['latency'] ?? ($up['latency'] ?? null);
+        $verf = $wan['uptime_stats']['WAN']['availability'] ?? null;
+        $link = 0;
+        foreach ([$w1, $w2] as $w) {
+            if ($link === 0 && !empty($w['up'])) {
+                $link = (int)($w['speed'] ?? 0);
+            }
+        }
+        $st = null;
+        if ((float)($www['xput_down'] ?? 0) > 0 || (float)($www['xput_up'] ?? 0) > 0) {      // ein fehlgeschlagener Speedtest liefert Nullen: dann nichts melden
+            $st = ['down' => (float)($www['xput_down'] ?? 0), 'up' => (float)($www['xput_up'] ?? 0), 'ping' => (int)($www['speedtest_ping'] ?? 0), 'ts' => (int)($www['speedtest_lastrun'] ?? 0)];
+        }
+        return [
+            'online' => $online, 'dauer' => $online ? max(0, (int)($up['uptime'] ?? ($www['uptime'] ?? 0))) : 0,
+            'anbieter' => trim((string)($wan['isp_name'] ?? '')) !== '' ? trim((string)$wan['isp_name']) : trim((string)($wan['isp_organization'] ?? '')),
+            'asn' => (int)($wan['asn'] ?? 0), 'ip' => $ip, 'latenz' => $lat === null ? null : (int)$lat, 'verfuegbarkeit' => $verf === null ? null : (float)$verf,
+            'wan1_up' => $w1 ? !empty($w1['up']) : null, 'wan2_up' => $w2 ? !empty($w2['up']) : null, 'link_mbit' => $link,
+            'rx_bps' => (int)round((float)($www['rx_bytes-r'] ?? ($up['rx_bytes-r'] ?? 0)) * 8), 'tx_bps' => (int)round((float)($www['tx_bytes-r'] ?? ($up['tx_bytes-r'] ?? 0)) * 8),
+            'speedtest' => $st,
+        ];
+    }
+
+    /** MQTT-Werte der Internetverbindung (Topic-Rest unter unifi/internet/); Datenraten nur mit der Option verkehr. */
+    public static function internetWerte(array $i, bool $verkehr): array
+    {
+        $w = ['online' => $i['online'] ? '1' : '0', 'verbindungsdauer_s' => (string)$i['dauer']];
+        if ($i['anbieter'] !== '') {
+            $w['anbieter'] = $i['anbieter'];
+        }
+        if ($i['asn'] > 0) {
+            $w['asn'] = (string)$i['asn'];
+        }
+        if ($i['ip'] !== '') {
+            $w['ip'] = $i['ip'];
+        }
+        if ($i['latenz'] !== null) {
+            $w['latenz_ms'] = (string)$i['latenz'];
+        }
+        if ($i['verfuegbarkeit'] !== null) {
+            $w['verfuegbarkeit_prozent'] = self::zahl($i['verfuegbarkeit'], 2);
+        }
+        if ($i['wan1_up'] !== null) {
+            $w['wan1_up'] = $i['wan1_up'] ? '1' : '0';
+        }
+        if ($i['wan2_up'] !== null) {
+            $w['wan2_up'] = $i['wan2_up'] ? '1' : '0';
+        }
+        if ($i['link_mbit'] > 0) {
+            $w['link_mbit'] = (string)$i['link_mbit'];
+        }
+        if ($i['speedtest'] !== null) {
+            $w['speedtest_down_mbit'] = self::zahl($i['speedtest']['down'], 1);
+            $w['speedtest_up_mbit'] = self::zahl($i['speedtest']['up'], 1);
+            $w['speedtest_ping_ms'] = (string)$i['speedtest']['ping'];
+            $w['speedtest_ts'] = (string)$i['speedtest']['ts'];
+        }
+        if ($verkehr) {
+            $w['down_bps'] = (string)$i['rx_bps'];
+            $w['up_bps'] = (string)$i['tx_bps'];
+        }
+        return $w;
+    }
+
+    /** Dauer in Sekunden als Text, z. B. "1 Tag 11 Std 10 Min". */
+    public static function dauerText(int $s): string
+    {
+        if ($s < 60) {
+            return 'weniger als 1 Min';
+        }
+        $t = intdiv($s, 86400);
+        $h = intdiv($s % 86400, 3600);
+        $m = intdiv($s % 3600, 60);
+        return ($t > 0 ? $t . ($t === 1 ? ' Tag ' : ' Tage ') : '') . ($t > 0 || $h > 0 ? $h . ' Std ' : '') . $m . ' Min';
     }
 
     /** MQTT-Werte ueber das ganze Netz (Topic-Rest unter unifi/netz/). */

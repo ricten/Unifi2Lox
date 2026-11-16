@@ -5,7 +5,7 @@
 ^ Autor | Rico Tengler |
 ^ Logo | {{:plugins:unifi2lox:unifi2lox.png?64|Unifi2Lox}} |
 ^ Status | BETA |
-^ Version | 0.1.0 |
+^ Version | 0.3.0 |
 ^ Min. LB Version | 4.0.0.0 |
 ^ Release Download | https://github.com/ricten/Unifi2Lox/releases/latest/download/unifi2lox.zip |
 ^ Pre-Release Download | - |
@@ -32,7 +32,7 @@ Eigenschaften:
   * **Alle Ports** von Switches und Gateway: Link, Geschwindigkeit, Anzahl der Clients je Port, optional Datenraten
   * **PoE je Port:** Leistung (W), Strom (mA), „liefert Strom“; je Gerät Gesamtleistung und PoE-Budget, dazu die Summe im ganzen Netz
   * **Clients je Port** (Kabel) und **Clients je Access Point** (gesamt, Gäste, je Funkband 2,4/5/6 GHz); im ganzen Netz Clients gesamt, Kabel und WLAN
-  * **Online-Status je Client:** Im Reiter „Clients“ stehen alle Clients des Gateways mit IP-Adresse; für die gewählten meldet das Plugin ''unifi/client/<name>/online'' (1 = verbunden, 0 = nicht verbunden)
+  * **Online-Status je Client:** Im Reiter „Clients“ stehen alle Clients des Gateways mit IP-Adresse; je Client einzeln wählbar: ''unifi/client/<name>/online'' (1 = verbunden, 0 = nicht verbunden), ''…/ip'' (IP-Adresse) und ''…/verbindung'' (aktive Verbindung)
   * Die **Namen** der Clients je Port und je Access Point zeigt die Weboberfläche im Reiter „Netzwerk“ (nicht MQTT); UniFi-Geräte an Ports (Access Point am Switch) werden erkannt
   * **Befehle aus Loxone** (ab Werk gesperrt, mit Quittung): ''poe'' (1 = ein, 0 = aus), ''neustart'' (PoE kurz aus und ein) und ''aktiv'' (Port ganz ein/aus), nur für ausdrücklich freigegebene Ports. Uplink-Ports werden nie geschaltet, PoE-Befehle nur an Ports mit PoE
   * Je Gerät Name im Topic und Auswahl der veröffentlichten Ports
@@ -94,14 +94,16 @@ Falsche Zugangsdaten (auch ein Konto mit Zwei-Faktor-Anmeldung) wiederholt der D
 Der Reiter **Clients** listet alle Clients des Gateways mit Name, MAC-Adresse, IP-Adresse, Verbindung (Switch und Port bzw. Access Point mit Band und WLAN) und Status. Verbundene Clients stehen oben; „alle bekannten anzeigen“ blendet auch die derzeit nicht verbundenen ein (zuletzt gesehen). Ein Klick auf eine Spaltenüberschrift sortiert die Tabelle (zweiter Klick: andere Richtung), z. B. nach der IP-Adresse.
 
 ^ Einstellung ^ Standard ^ Beschreibung ^
-| Online-Status per MQTT | aus | Für diesen Client wird ''unifi/client/<name>/online'' gemeldet: 1 = verbunden, 0 = nicht verbunden (auch wenn der Client gerade nicht im Netz ist) |
+| Online-Status senden | aus | Für diesen Client wird ''unifi/client/<name>/online'' gemeldet: 1 = verbunden, 0 = nicht verbunden (auch wenn der Client gerade nicht im Netz ist) |
+| IP senden | aus | ''unifi/client/<name>/ip'' mit der IP-Adresse (nicht verbunden: die zuletzt bekannte, ohne bekannte IP fehlt das Topic) |
+| Verbindung senden | aus | ''unifi/client/<name>/verbindung'' mit der aktiven Verbindung als Text (Switch und Port bzw. Access Point, Band, WLAN; nicht verbunden: „nicht verbunden“) |
 | Name im Topic | Name aus dem Gateway | nur a–z, 0–9, _ und -; der Vorschlag wird beim Speichern festgeschrieben (ändert sich der Name im Gateway später, bleibt das Topic gleich), ohne Namen ''client_<Ende der MAC>'' |
 
-Gespeichert werden nur die gewählten Clients (MAC-Adresse und Name im Topic). Namen und IP-Adressen aller anderen Clients bleiben im Arbeitsspeicher, IP-Adressen gehen nie nach MQTT. Das Gateway behält WLAN-Clients nach dem Trennen noch einige Zeit in seiner Liste, der Wechsel auf 0 kann deshalb einige Minuten dauern.
+Gespeichert werden nur die gewählten Clients (MAC-Adresse und Name im Topic). Namen und IP-Adressen aller anderen Clients bleiben im Arbeitsspeicher und gehen nie nach MQTT; IP und Verbindung gehen nur bei den Clients nach MQTT, bei denen der jeweilige Schalter gesetzt ist. Das Gateway behält WLAN-Clients nach dem Trennen noch einige Zeit in seiner Liste, der Wechsel auf 0 kann deshalb einige Minuten dauern.
 
 ==== 3.4 Netzwerk, MQTT, Test und Logdateien ====
 
-Der Reiter **Netzwerk** zeigt je Gerät die Ports mit Link (abgeschaltete Ports als „inaktiv“), PoE-Leistung und den angeschlossenen Clients, je Access Point die WLAN-Clients mit Band und Signal. Die Seite aktualisiert sich nicht von selbst. Der Reiter MQTT zeigt das **Gateway-Abo** und die Verbindung zum Broker. Im Reiter Test gibt es die Selbstprüfung (mit einer eigenen, kurzen Sitzung am Gateway, nur lesend) und den Dienst-Neustart.
+Der Reiter **Netzwerk** zeigt oben die Karte **Internet** (Anbieter, Verbindungsdauer, öffentliche IP, Latenz, Verfügbarkeit, Anschlüsse, Datenrate, Speedtest) und je Gerät die Ports mit Link (abgeschaltete Ports als „inaktiv“), PoE-Leistung und den angeschlossenen Clients, je Access Point die WLAN-Clients mit Band und Signal. Die Seite aktualisiert sich nicht von selbst. Der Reiter MQTT zeigt das **Gateway-Abo** und die Verbindung zum Broker. Im Reiter Test gibt es die Selbstprüfung (mit einer eigenen, kurzen Sitzung am Gateway, nur lesend) und den Dienst-Neustart.
 
 ===== 4. MQTT-Topics (Referenz) =====
 
@@ -121,6 +123,14 @@ Schema ''unifi/<gerät>/<wert>'' und ''unifi/<gerät>/port<nr>/<wert>'', Zahlen 
 | ''unifi/netz/clients'', ''clients_kabel'', ''clients_wlan'' | Clients im ganzen Netz |
 | ''unifi/netz/poe_gesamt_w'' | PoE aller Geräte zusammen |
 | ''unifi/client/<name>/online'' | nur für im Reiter „Clients“ gewählte Clients: 1 = verbunden, 0 = nicht verbunden |
+| ''unifi/client/<name>/ip'' | IP-Adresse dieses Clients (nicht verbunden: die zuletzt bekannte), mit Schalter „IP senden“ |
+| ''unifi/client/<name>/verbindung'' | aktive Verbindung dieses Clients als Text, mit Schalter „Verbindung senden“ |
+| ''unifi/internet/online'', ''verbindungsdauer_s'' | Internetverbindung steht (0/1), Dauer der aktuellen Verbindung in Sekunden |
+| ''unifi/internet/anbieter'', ''asn'', ''ip'' | Internetanbieter, AS-Nummer, öffentliche IP-Adresse |
+| ''unifi/internet/latenz_ms'', ''verfuegbarkeit_prozent'' | Latenz, Verfügbarkeit der letzten 24 Stunden |
+| ''unifi/internet/wan1_up'', ''wan2_up'', ''link_mbit'' | Link der WAN-Anschlüsse (0/1), Geschwindigkeit |
+| ''unifi/internet/speedtest_down_mbit'', ''speedtest_up_mbit'', ''speedtest_ping_ms'', ''speedtest_ts'' | letzter Speedtest des Gateways (nur bei gültigen Werten) |
+| ''unifi/internet/down_bps'', ''up_bps'' | Datenrate am Internetanschluss (nur mit der Option „Datenraten veröffentlichen“) |
 | ''unifi/status/ok'' | 1 = Anmeldung und letzte Abfrage in Ordnung |
 | ''unifi/status/zaehler'' | Lebenszeichen 0–999, zählt alle 10 s |
 | ''unifi/status/ts'' | Zeitstempel des letzten Lebenszeichens |
@@ -173,4 +183,8 @@ Weitere Hinweise: [[https://github.com/ricten/Unifi2Lox/blob/main/docs/wiki/Fehl
 ===== 8. Changelog =====
 
 ^ Version ^ Änderung ^
+| 0.3.0 | Internetverbindung (nur lesend): Anbieter, Status, Verbindungsdauer, öffentliche IP, Latenz, Verfügbarkeit, WAN-Anschlüsse, Speedtest; je Client einzeln wählbar: Online-Status, IP-Adresse und aktive Verbindung |
+| 0.2.2 | Client-Tabelle per Klick auf die Spaltenköpfe sortierbar; abgeschaltete Ports wie in der UniFi-Oberfläche (weißes Kästchen, „inaktiv“) |
+| 0.2.1 | Abgeschaltete Ports als „inaktiv“ im Reiter „Netzwerk“ |
+| 0.2.0 | Port ganz ein/aus (Befehl ''aktiv'', eigene Freigabe); Reiter „Clients“ mit IP-Adressen und Online-Status per MQTT; Bezeichnungen der Modelle |
 | 0.1.0 | Erste Version (Beta): lokale Anmeldung am UniFi-Gateway, alle Ports mit Link, PoE je Port, Clients je Port und je Access Point, Befehle PoE ein/aus und Neustart (ab Werk gesperrt, mit Quittung), Healthcheck, Autoupdate, Weboberfläche im LoxBerry Design System |

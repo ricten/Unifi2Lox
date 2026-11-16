@@ -218,6 +218,12 @@ final class UniController
         return $this->api('GET', $this->seitenPfad('stat/sta'));
     }
 
+    /** Zustand des Netzes (stat/health): je Subsystem (wan, www, lan, wlan ...) ein Eintrag, u. a. Provider und WAN-Daten. */
+    public function gesundheit(): array
+    {
+        return $this->api('GET', $this->seitenPfad('stat/health'));
+    }
+
     /** Alle dem Gateway bekannten Clients, auch die gerade nicht verbundenen (rest/user). */
     public function bekannteClients(): array
     {

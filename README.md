@@ -28,7 +28,8 @@ Das Plugin nutzt die **inoffizielle** Schnittstelle des Network-Dienstes (diesel
 - **Ports:** Link, Geschwindigkeit und Anzahl der Clients je Port, optional Datenraten. UniFi-Geräte an Ports (z. B. ein Access Point am Switch) erkennt das Plugin.
 - **PoE:** Leistung (W), Strom (mA) und „liefert Strom“ je Port; je Gerät Gesamtleistung und PoE-Budget, dazu die Summe im ganzen Netz.
 - **Clients:** je Port (Kabel), je Access Point (gesamt, Gäste, je Funkband 2,4/5/6 GHz) und im ganzen Netz (gesamt, Kabel, WLAN). Die **Namen** der Clients je Port und je Access Point zeigt die Weboberfläche im Reiter „Netzwerk“; nach MQTT gehen nur Zähler.
-- **Client-Liste mit IP** (Reiter „Clients“): alle Clients des Gateways (auch die derzeit nicht verbundenen); die Tabelle ist per Klick auf die Spaltenüberschriften sortierbar; je Client lässt sich wählen, ob sein **Online-Status** (`unifi/client/<name>/online`, 1/0) per MQTT gemeldet wird. Namen und IP-Adressen anderer Clients gehen nie nach MQTT.
+- **Client-Liste mit IP** (Reiter „Clients“): alle Clients des Gateways (auch die derzeit nicht verbundenen); die Tabelle ist per Klick auf die Spaltenüberschriften sortierbar; je Client lässt sich wählen, ob sein **Online-Status** (`unifi/client/<name>/online`, 1/0) per MQTT gemeldet wird. Je Client sind **Online-Status**, **IP-Adresse** (`unifi/client/<name>/ip`) und **aktive Verbindung** (`…/verbindung`) einzeln wählbar; Namen und IP-Adressen aller nicht gewählten Clients gehen nie nach MQTT.
+- **Internetverbindung** (nur lesend, `unifi/internet/…`): Anbieter, Status, **Verbindungsdauer**, öffentliche IP, Latenz, Verfügbarkeit, Link der WAN-Anschlüsse, Speedtest; als Karte „Internet“ im Reiter „Netzwerk“.
 - **Befehle aus Loxone** (ab Werk gesperrt, mit Quittung): `poe` (1 = ein, 0 = aus), `neustart` (PoE kurz aus und ein) und `aktiv` (Port ganz ein/aus, auch ohne PoE), nur für **ausdrücklich freigegebene Ports** (PoE-Befehle und Ein/Aus haben je eine eigene Freigabe). Uplink-Ports werden nie geschaltet, PoE-Befehle nur an Ports mit PoE.
 - Je Gerät Name im Topic und Auswahl der veröffentlichten Ports (viele Ports = viele Topics). Veröffentlicht nur **Änderungen** (alle 5 Minuten alle Werte). Lebenszeichen `unifi/status/ok`, `zaehler`, `ts`, Autostart, Watchdog, Healthcheck, Prüfung des Gateway-Abos.
 - Weboberfläche im LoxBerry Design System, **ohne JavaScript**.
@@ -55,7 +56,7 @@ Virtueller Ausgang in Loxone: Adresse `/dev/udp/<LoxBerry-IP>/<UDP-Port>` (Stand
 - Das Passwort liegt in der Konfigurationsdatei des Plugins (Rechte 0600), wird nie angezeigt, geloggt oder per MQTT gesendet. Die Sitzung des Gateways lebt nur im Speicher.
 - Falsche Zugangsdaten (auch ein Konto mit Zwei-Faktor-Anmeldung) wiederholt der Dienst nie von selbst, damit das Gateway das Konto nicht sperrt.
 - Das Gateway hat meist ein selbstsigniertes Zertifikat: die Prüfung ist ab Werk aus (einstellbar), die Verbindung bleibt verschlüsselt.
-- Client-Namen und IPs stehen nur in der Weboberfläche und im RAM (`/dev/shm`), nie in MQTT, Log oder Konfiguration.
+- Client-Namen und IPs stehen nur in der Weboberfläche und im RAM (`/dev/shm`), nie in Log oder Konfiguration und nie in MQTT, außer bei den im Reiter „Clients“ gewählten Clients (dort je nach Schalter `unifi/client/<name>/online`, `…/ip`, `…/verbindung`).
 
 ## Entwicklung
 

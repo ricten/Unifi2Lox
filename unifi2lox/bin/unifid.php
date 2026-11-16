@@ -109,6 +109,7 @@ $namen = [];                    // MAC => Name im Topic
 $nameZuMac = [];
 $bekannt = [];                  // alle dem Gateway bekannten Clients (UniDaten::bekannte(); nur fuer die Weboberflaeche und den Online-Status)
 $bekanntNext = 0;
+$internet = null;               // UniDaten::internet(): Internetverbindung (WAN), nur lesen
 $clientNamen = [];              // MAC => Name im Topic der ausgewaehlten Clients
 $gesendet = [];                 // Topic => [Wert, Zeit]
 $letzterBefehl = 0.0;
@@ -140,7 +141,7 @@ $baueNamen = function () use (&$namen, &$nameZuMac, &$modell, &$uni, &$bekannt, 
 
 /** Eine Abfrage (Geraete und Clients) am Gateway. Liefert true bei Erfolg. */
 $abfragen = function (int $now) use (&$ctl, &$authStatus, &$authText, &$authSeit, &$authNext, &$abfrageOk, &$abfrageText, &$abfrageZeit, &$abfrageDauerMs,
-    &$abfrageZaehler, &$modell, &$roh, &$bekannt, &$bekanntNext, $paths, $log, $baueNamen): bool {
+    &$abfrageZaehler, &$modell, &$roh, &$bekannt, &$bekanntNext, &$internet, $paths, $log, $baueNamen): bool {
     $t0 = microtime(true);
     $g = $ctl->geraete();
     $c = $g['ok'] ? $ctl->clients() : $g;
@@ -164,8 +165,13 @@ $abfragen = function (int $now) use (&$ctl, &$authStatus, &$authText, &$authSeit
                 $log->warn('Liste der bekannten Clients nicht lesbar: ' . $u['text'], 'bekannte-clients');
             }
         }
+        $h = $ctl->gesundheit();                          // Provider und WAN-Daten; ein Fehler hier ist nicht schlimm (Rest kommt aus dem Gateway-Eintrag)
+        if (!$h['ok']) {
+            $log->warn('Internetdaten (stat/health) nicht lesbar: ' . $h['text'], 'health');
+        }
+        $internet = UniDaten::internet($g['daten'], $h['ok'] ? $h['daten'] : []);
         $baueNamen();
-        Util::jsonSave($paths->netzFile(), ['zeit' => $now, 'modell' => $modell, 'bekannt' => $bekannt]);
+        Util::jsonSave($paths->netzFile(), ['zeit' => $now, 'modell' => $modell, 'bekannt' => $bekannt, 'internet' => $internet]);
         $log->debug('Abfrage: ' . count($modell['geraete']) . ' Geräte, ' . $modell['clients']['gesamt'] . ' Clients, ' . $abfrageDauerMs . ' ms');
         return true;
     }
@@ -406,8 +412,13 @@ while ($running) {
                 foreach (UniDaten::netzWerte($modell) as $k => $v) {
                     $alle[T . '/netz/' . $k] = $v;
                 }
-                foreach (UniDaten::clientWerte(UniDaten::clientAnzeige($modell, $bekannt), $clientNamen) as $k => $v) {
+                foreach (UniDaten::clientWerte(UniDaten::clientAnzeige($modell, $bekannt), $clientNamen, $uni['clients']) as $k => $v) {
                     $alle[T . '/client/' . $k] = $v;
+                }
+                if ($internet !== null) {
+                    foreach (UniDaten::internetWerte($internet, !empty($uni['verkehr'])) as $k => $v) {
+                        $alle[T . '/internet/' . $k] = $v;
+                    }
                 }
                 foreach ($alle as $topic => $v) {
                     if (!isset($gesendet[$topic]) || $gesendet[$topic][0] !== $v || $now - $gesendet[$topic][1] >= REFRESH) {

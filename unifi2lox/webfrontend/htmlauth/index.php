@@ -191,6 +191,43 @@ foreach ($modell['geraete'] as $g) {
 <?php } else { ?>
 <p class="hinweis">Stand: <?= h(date('d.m.Y H:i:s', (int)($netz['zeit'] ?? 0))) ?> · <?= (int)$modell['clients']['gesamt'] ?> Clients (<?= (int)$modell['clients']['kabel'] ?> Kabel, <?= (int)$modell['clients']['wlan'] ?> WLAN) · PoE gesamt <?= h(UniDaten::zahl($modell['poe_gesamt_w'], 1)) ?> W. Die Seite aktualisiert sich nicht von selbst (neu laden).</p>
 <?php
+$inet = is_array($netz['internet'] ?? null) ? $netz['internet'] : null;
+if ($inet !== null) {
+    $zeilen = [];
+    $zeilen[] = ['Status', '<span class="uni-led uni-led-' . ($inet['online'] ? 'ok' : 'fehler') . '"></span> ' . ($inet['online'] ? 'online' : 'offline')];
+    if ($inet['anbieter'] !== '') {
+        $zeilen[] = ['Anbieter', h($inet['anbieter']) . ((int)$inet['asn'] > 0 ? ' <span class="hinweis">(AS' . (int)$inet['asn'] . ')</span>' : '')];
+    }
+    $zeilen[] = ['Verbindungsdauer', $inet['online'] ? h(UniDaten::dauerText((int)$inet['dauer'])) . ' <span class="hinweis">(seit ' . h(date('d.m.Y H:i', time() - (int)$inet['dauer'])) . ')</span>' : '<span class="hinweis">-</span>'];
+    if ($inet['ip'] !== '') {
+        $zeilen[] = ['IP-Adresse (WAN)', h($inet['ip'])];
+    }
+    if ($inet['latenz'] !== null) {
+        $zeilen[] = ['Latenz', (int)$inet['latenz'] . ' ms'];
+    }
+    if ($inet['verfuegbarkeit'] !== null) {
+        $zeilen[] = ['Verfügbarkeit (24 Std)', h(str_replace('.', ',', UniDaten::zahl($inet['verfuegbarkeit'], 2))) . ' %'];
+    }
+    $wans = [];
+    foreach (['wan1_up' => 'WAN 1', 'wan2_up' => 'WAN 2'] as $k => $t) {
+        if ($inet[$k] !== null) {
+            $wans[] = $t . ': <span class="uni-led uni-led-' . ($inet[$k] ? 'ok' : 'aus') . '"></span> ' . ($inet[$k] ? 'Link' : 'kein Link');
+        }
+    }
+    if ($wans) {
+        $zeilen[] = ['Anschlüsse', implode(' · ', $wans) . ((int)$inet['link_mbit'] > 0 ? ' <span class="hinweis">(' . ((int)$inet['link_mbit'] >= 1000 ? h(UniDaten::zahl($inet['link_mbit'] / 1000, 1)) . ' Gbit/s' : (int)$inet['link_mbit'] . ' Mbit/s') . ')</span>' : '')];
+    }
+    $zeilen[] = ['Datenrate aktuell', '↓ ' . h(str_replace('.', ',', UniDaten::zahl($inet['rx_bps'] / 1000000, 2))) . ' Mbit/s · ↑ ' . h(str_replace('.', ',', UniDaten::zahl($inet['tx_bps'] / 1000000, 2))) . ' Mbit/s'];
+    if ($inet['speedtest'] !== null) {
+        $st = $inet['speedtest'];
+        $zeilen[] = ['Letzter Speedtest', '↓ ' . h(str_replace('.', ',', UniDaten::zahl($st['down'], 1))) . ' · ↑ ' . h(str_replace('.', ',', UniDaten::zahl($st['up'], 1))) . ' Mbit/s, Ping ' . (int)$st['ping'] . ' ms <span class="hinweis">(' . h(date('d.m.Y H:i', (int)$st['ts'])) . ')</span>'];
+    }
+    echo '<div class="lb-card"><h4>Internet</h4><div class="lb-table-scroll"><table class="lb-table uni-kl">';
+    foreach ($zeilen as [$t, $v]) {
+        echo '<tr><th>' . h($t) . '</th><td>' . $v . '</td></tr>';
+    }
+    echo '</table></div></div>';
+}
 foreach ($modell['geraete'] as $g) {
     $typText = ['gateway' => 'Gateway', 'switch' => 'Switch', 'ap' => 'Access Point'][$g['typ']] ?? 'Gerät';
     echo '<div class="lb-card"><h4><span class="uni-led uni-led-' . ($g['online'] ? 'ok' : 'fehler') . '"></span> ' . h($g['name']) . ' <span class="hinweis">' . h($g['modell_name'] ?? $g['modell']) . ' · ' . h($typText) . ($g['online'] ? '' : ' · nicht erreichbar') . '</span></h4>';
@@ -259,7 +296,7 @@ foreach ($cl as $mac => $c) {
     $zeilen[$mac] = $c;
 }
 // Sortierung über Links in den Spaltenköpfen (die Seite hat kein JavaScript): ?sort=<spalte>&dir=asc|desc
-$sortSpalten = ['status', 'auswahl', 'topic', 'name', 'ip', 'ort'];
+$sortSpalten = ['status', 'auswahl', 'sip', 'sverb', 'topic', 'name', 'ip', 'ort'];
 $sortGesetzt = in_array($_GET['sort'] ?? '', $sortSpalten, true);
 $sort = $sortGesetzt ? (string)$_GET['sort'] : 'status';
 $richtung = ($_GET['dir'] ?? '') === 'desc' ? 'desc' : 'asc';
@@ -292,8 +329,9 @@ uksort($zeilen, function ($a, $b) use ($zeilen, $uni, $sort, $richtung, $standar
             return $x[$feld] === '' ? 1 : -1;                  // leere Werte stehen in beiden Richtungen am Ende
         }
         $r = $sort === 'ip' ? $ipZahl($x['ip']) <=> $ipZahl($y['ip']) : strnatcasecmp($x['ort'], $y['ort']);
-    } elseif ($sort === 'auswahl') {
-        $r = (int)isset($uni['clients'][$b]) <=> (int)isset($uni['clients'][$a]);          // aufsteigend: gewählte zuerst
+    } elseif ($sort === 'auswahl' || $sort === 'sip' || $sort === 'sverb') {
+        $flag = ['auswahl' => 'online', 'sip' => 'ip', 'sverb' => 'verbindung'][$sort];
+        $r = (int)!empty($uni['clients'][$b][$flag]) <=> (int)!empty($uni['clients'][$a][$flag]);          // aufsteigend: gewählte zuerst
     } elseif ($sort === 'topic') {
         $r = strnatcasecmp($topicVon($a, $x), $topicVon($b, $y));
     } elseif ($sort === 'name') {
@@ -317,12 +355,12 @@ $kopf = function (string $spalte, string $text) use ($basis, $sort, $richtung, $
 <?php if ($modell === null) { ?>
 <p class="hinweis"><?= $laeuft ? 'Noch keine Daten vom Gateway (' . h($status['anmeldung']['text'] ?? 'Anmeldung läuft') . ').' : 'Der Dienst läuft nicht.' ?></p>
 <?php } else { ?>
-<p class="hinweis">Alle Clients des Gateways mit IP-Adresse. Bei den hier gewählten Clients meldet das Plugin den <b>Online-Status</b> (1 = verbunden, 0 = nicht verbunden) unter <code>unifi/client/&lt;name&gt;/online</code> an MQTT; für den Miniserver ist das ein virtueller Eingang je Client.
+<p class="hinweis">Alle Clients des Gateways mit IP-Adresse. Je Client lässt sich einzeln wählen, was das Plugin an MQTT meldet: den <b>Online-Status</b> (<code>unifi/client/&lt;name&gt;/online</code>, 1 = verbunden, 0 = nicht verbunden), die <b>IP-Adresse</b> (<code>…/ip</code>) und die <b>aktive Verbindung</b> (<code>…/verbindung</code>, z. B. „Switch · Port 3“ oder „Access Point · 5 GHz · WLAN-Name“). Für den Miniserver ist jedes Topic ein virtueller Eingang.
 Die Liste zeigt die gerade verbundenen und die gewählten Clients.
 <?php if ($alleZeigen) { ?>Es sind auch alle weiteren bekannten Clients aufgeführt (<a href="<?= $basis ?>clients<?= $sortGesetzt ? '&amp;sort=' . $sort . '&amp;dir=' . $richtung : '' ?>">nur verbundene und gewählte anzeigen</a>).
 <?php } elseif ($offlineBekannt > 0) { ?><?= (int)$offlineBekannt ?> weitere, derzeit nicht verbundene Clients sind ausgeblendet (<a href="<?= $basis ?>clients<?= $sortGesetzt ? '&amp;sort=' . $sort . '&amp;dir=' . $richtung : '' ?>&amp;alle=1">alle bekannten anzeigen</a>).<?php } ?></p>
 <div class="lb-table-scroll"><table class="lb-table">
-<tr><?= $kopf('auswahl', 'Online-Status per MQTT') . $kopf('topic', 'Name im Topic') . $kopf('name', 'Client') . $kopf('ip', 'IP-Adresse') . $kopf('ort', 'Verbindung') . $kopf('status', 'Status') ?></tr>
+<tr><?= $kopf('auswahl', 'Online-Status senden') . $kopf('sip', 'IP senden') . $kopf('sverb', 'Verbindung senden') . $kopf('topic', 'Name im Topic') . $kopf('name', 'Client') . $kopf('ip', 'IP-Adresse') . $kopf('ort', 'Verbindung') . $kopf('status', 'Status') ?></tr>
 <?php foreach ($zeilen as $mac => $c) {
     $gewaehlt = isset($uni['clients'][$mac]);
     $macText = implode(':', str_split($mac, 2));
@@ -334,7 +372,9 @@ Die Liste zeigt die gerade verbundenen und die gewählten Clients.
     }
     ?>
 <tr>
- <td><input type="hidden" name="clients[<?= h($mac) ?>][da]" value="1"><?= schalter('clients[' . $mac . '][aktiv]', $gewaehlt) ?></td>
+ <td><input type="hidden" name="clients[<?= h($mac) ?>][da]" value="1"><?= schalter('clients[' . $mac . '][aktiv]', !empty($uni['clients'][$mac]['online'])) ?></td>
+ <td><?= schalter('clients[' . $mac . '][ip]', !empty($uni['clients'][$mac]['ip'])) ?></td>
+ <td><?= schalter('clients[' . $mac . '][verbindung]', !empty($uni['clients'][$mac]['verbindung'])) ?></td>
  <td><input class="lb-input uni-mittel" type="text" name="clients[<?= h($mac) ?>][name]" value="<?= h($vorschlag) ?>"></td>
  <td><b><?= h($c['name'] !== '' ? $c['name'] : '(ohne Namen)') ?></b><br><span class="hinweis"><?= h($macText) ?></span></td>
  <td><?= $c['ip'] !== '' ? h($c['ip']) : '<span class="hinweis">-</span>' ?></td>
@@ -344,7 +384,7 @@ Die Liste zeigt die gerade verbundenen und die gewählten Clients.
 <?php } ?>
 </table></div>
 <p class="hinweis"><b>Name im Topic:</b> nur a–z, 0–9, _ und -; der Vorschlag kommt aus dem Namen im Gateway und wird mit dem Speichern festgeschrieben (ändert sich der Name später im Gateway, bleibt das Topic gleich). Doppelte Namen bekommen eine Nummer.
-Gespeichert werden nur die gewählten Clients (MAC-Adresse und Name im Topic); Namen und IP-Adressen aller anderen Clients bleiben im Arbeitsspeicher und gehen nie nach MQTT. Ein Client, der nicht verbunden ist, wird mit 0 gemeldet.
+Gespeichert werden nur die gewählten Clients (MAC-Adresse und Name im Topic); Namen und IP-Adressen aller anderen Clients bleiben im Arbeitsspeicher und gehen nie nach MQTT. Von den gewählten Clients gehen nur die Werte nach MQTT, deren Schalter gesetzt ist. Die IP ist bei einem nicht verbundenen Client die zuletzt bekannte (ohne bekannte IP fehlt das Topic), die Verbindung lautet dann „nicht verbunden“. Ein Client, der nicht verbunden ist, wird beim Online-Status mit 0 gemeldet.
 Das Gateway entfernt WLAN-Clients erst nach einiger Zeit aus seiner Liste, der Wechsel auf 0 kann deshalb einige Minuten dauern.</p>
 <p><button class="lb-btn lb-btn-primary" type="submit" name="aktion" value="speichern">Speichern</button></p>
 <?php } ?>
@@ -412,6 +452,16 @@ $zeilen = [
     ['unifi/netz/clients | clients_kabel | clients_wlan', '-', 'Clients im ganzen Netz'],
     ['unifi/netz/poe_gesamt_w', 'W', 'PoE-Leistung aller Geräte zusammen'],
     ['unifi/client/<name>/online', '0/1', 'Online-Status eines im Reiter „Clients“ gewählten Clients (1 = verbunden)'],
+    ['unifi/client/<name>/ip', 'Text', 'IP-Adresse dieses Clients, wenn im Reiter „Clients“ „IP senden“ gesetzt ist (nicht verbunden: die zuletzt bekannte)'],
+    ['unifi/client/<name>/verbindung', 'Text', 'aktive Verbindung dieses Clients (Switch und Port bzw. Access Point, Band, WLAN), wenn „Verbindung senden“ gesetzt ist; nicht verbunden: „nicht verbunden“'],
+    ['unifi/internet/online', '0/1', 'Internetverbindung des Gateways steht (nur lesen)'],
+    ['unifi/internet/verbindungsdauer_s', 's', 'Dauer der aktuellen Verbindung (Sitzung beim Provider), springt bei einer Neueinwahl auf 0'],
+    ['unifi/internet/anbieter | asn', 'Text, -', 'Name des Internetanbieters und seine AS-Nummer'],
+    ['unifi/internet/ip', 'Text', 'öffentliche IP-Adresse (WAN)'],
+    ['unifi/internet/latenz_ms | verfuegbarkeit_prozent', 'ms, %', 'Latenz zum Internet, Verfügbarkeit der letzten 24 Stunden'],
+    ['unifi/internet/wan1_up | wan2_up | link_mbit', '0/1, Mbit/s', 'Link der WAN-Anschlüsse, ausgehandelte Geschwindigkeit'],
+    ['unifi/internet/speedtest_down_mbit | speedtest_up_mbit | speedtest_ping_ms | speedtest_ts', 'Mbit/s, ms, s', 'letzter Speedtest des Gateways (nur wenn er gültige Werte lieferte)'],
+    ['unifi/internet/down_bps | up_bps', 'bit/s', 'aktuelle Datenrate am Internetanschluss (nur mit der Option „Datenraten veröffentlichen“)'],
     ['unifi/status/ok', '0/1', 'Anmeldung und letzte Abfrage in Ordnung (No Cache)'],
     ['unifi/status/zaehler', '0–999', 'Lebenszeichen, zählt alle 10 s (No Cache)'],
     ['unifi/status/ts', 's', 'Unix-Zeitstempel des letzten Lebenszeichens'],

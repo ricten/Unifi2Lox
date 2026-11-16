@@ -40,17 +40,30 @@ Wurzel `unifi/`. Gerätename = Name im Plugin, sonst Name im Gateway (ohne Leerz
 | `…/port<nr>/poe_an`, `poe_w`, `poe_ma` | 0/1, W, mA | nur PoE-Ports |
 | `…/port<nr>/rx_bps`, `tx_bps` | bit/s | nur mit Option „Datenraten“ |
 | `unifi/netz/clients`, `clients_kabel`, `clients_wlan`, `poe_gesamt_w` | - / W | ganzes Netz |
-| `unifi/client/<name>/online` | 0/1 | nur für im Reiter „Clients“ gewählte Clients: in `stat/sta` vorhanden = 1 |
+| `unifi/client/<name>/online` | 0/1 | nur für im Reiter „Clients“ gewählte Clients mit Schalter „Online-Status senden“: in `stat/sta` vorhanden = 1 |
+| `unifi/client/<name>/ip` | Text | mit Schalter „IP senden“: IP des Clients (`stat/sta`; nicht verbunden: `last_ip`/`fixed_ip` aus `rest/user`; sonst kein Topic) |
+| `unifi/client/<name>/verbindung` | Text | mit Schalter „Verbindung senden“: „<Switch> · Port <n>“ (Kabel) bzw. „<Access Point> · <Band> · <WLAN>“; ohne bekannten Ort „Kabel“ oder „WLAN“; nicht verbunden: „nicht verbunden“ |
+| `unifi/internet/online`, `verbindungsdauer_s` | 0/1, s | Gateway: `uplink.up` und `uplink.uptime` (Dauer der aktuellen PPPoE-Sitzung) |
+| `unifi/internet/anbieter`, `asn` | Text, - | `stat/health` Subsystem `wan`: `isp_name` (sonst `isp_organization`), `asn` |
+| `unifi/internet/ip`, `latenz_ms`, `verfuegbarkeit_prozent` | Text, ms, % | `wan_ip` (sonst `uplink.ip`), `www.latency`, `uptime_stats.WAN.availability` (24 Std) |
+| `unifi/internet/wan1_up`, `wan2_up`, `link_mbit` | 0/1, Mbit/s | `wan1.up`, `wan2.up` (nur wenn vorhanden), Speed des ersten WAN mit Link |
+| `unifi/internet/speedtest_down_mbit`, `speedtest_up_mbit`, `speedtest_ping_ms`, `speedtest_ts` | Mbit/s, ms, s | `www.xput_down/xput_up/speedtest_ping/speedtest_lastrun`, nur bei `xput` > 0 |
+| `unifi/internet/down_bps`, `up_bps` | bit/s | `www.rx_bytes-r`/`tx_bytes-r` × 8, nur mit Option „Datenraten“ |
 | `unifi/status/ok`, `zaehler`, `ts` | 0/1, 0–999, s | Lebenszeichen |
 | `unifi/befehl/<gerät>/port<nr>/<befehl>` | | Eingang, Quittung unter `…/quittung` |
 
 Ports lassen sich je Gerät auswählen (`1-8, 22`). Nur Änderungen, alle 5 Minuten alle Werte. Namen der Clients stehen nur in der Weboberfläche.
 
+### Internetverbindung (`unifi/internet/…`)
+- Quellen: `GET stat/health` (Subsystem `wan`: `isp_name`, `isp_organization`, `asn`, `wan_ip`, `uptime_stats.WAN.availability`; `www`: `latency`, `drops`, `rx_bytes-r`/`tx_bytes-r`, `speedtest_lastrun`, `xput_down`/`xput_up`) und der Eintrag des Gateways in `stat/device` (`uplink`: `up`, `uptime`, `latency`, `ip`, `name` (z. B. `ppp0` bei PPPoE); `wan1`/`wan2`: `up`, `speed`, `ifname`).
+- **Gemessen am Cloud Gateway (2026-11-16, nur lesend):** Anbieter und ASN stehen in `stat/health`; `uplink.uptime` ist die Dauer der aktuellen PPPoE-Sitzung (gleicher Wert wie `www.uptime`), nicht die Betriebszeit des Gateways (`uptime`); der Speedtest des Gateways lieferte `status` = Error mit Nullwerten (dann wird nichts gemeldet); WAN 2 (SFP+) war ohne Link (`up` = false).
+- Alle Werte ändern sich selten bis auf `verbindungsdauer_s` (steigt mit jeder Abfrage). Die öffentliche IP geht nur an den lokalen Broker, nie ins Log.
+
 ### Clients (Reiter „Clients“)
 - Verbundene Clients: `stat/sta` (alle 30 s, schon für die Zuordnung zu Ports und Access Points gelesen). Alle bekannten Clients: `GET rest/user` (alle 5 Minuten, nur für die Weboberfläche und den Namen offline gewählter Clients).
 - **Gemessen am echten Gateway (2026-11-16, nur lesend):** `rest/user` liefert 226 Einträge (47 verbunden, 179 nicht verbunden; Antwort 0,12 s, rund 170 KB). Felder je Eintrag: `mac`, `last_seen` (immer), `hostname` (rund die Hälfte), `name` (rund ein Viertel), `last_ip` oder `fixed_ip` (rund 70 % der nicht verbundenen). Alle verbundenen Clients stehen auch in `rest/user`.
 - Online = die MAC steht in `stat/sta`. Das Gateway behält WLAN-Clients nach dem Trennen noch einige Zeit in `stat/sta`, der Wechsel auf 0 verzögert sich entsprechend.
-- Konfiguration: `clients` = MAC → Name im Topic (nur gewählte Clients). Der Name im Topic wird beim Speichern aus dem Namen im Gateway vorgeschlagen und festgeschrieben; leer = Name aus dem Gateway, sonst `client_<letzte 6 Hexziffern der MAC>`. Namen und IP-Adressen anderer Clients bleiben im RAM (`netz.json`).
+- Konfiguration: `clients` = MAC → `name` (Name im Topic) und die drei Schalter `online`, `ip`, `verbindung` (nur gewählte Clients; ein Eintrag ohne Angabe `online` stammt aus der Konfiguration bis 0.3.0 und meldet den Online-Status wie bisher). Der Name im Topic wird beim Speichern aus dem Namen im Gateway vorgeschlagen und festgeschrieben; leer = Name aus dem Gateway, sonst `client_<letzte 6 Hexziffern der MAC>`. Namen und IP-Adressen anderer Clients bleiben im RAM (`netz.json`).
 
 ## 4. Befehle
 

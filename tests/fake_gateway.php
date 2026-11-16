@@ -3,7 +3,7 @@
  * Fake-UniFi-Gateway fuer Tests (Router fuer den eingebauten PHP-Server):
  *   UNI_FAKE_DIR=<verzeichnis> php -S 127.0.0.1:<port> tests/fake_gateway.php
  * Dateien im Verzeichnis: state.json (geraete, clients), ctl.json (Steuerung der Tests), gw.log (Protokoll ohne Zugangsdaten), sessions.json.
- * ctl.json: aktiv_ignorieren (Aenderung von forward wird verworfen), user_403 (rest/user verboten), user, pw, csrf ("header" = Token im Antwortkopf, "cookie" = nur im JWT des Anmelde-Cookies), mfa, ablauf (naechste Abfrage 401, einmalig), nur_lesen (Aenderungen 403).
+ * ctl.json: health_403 (stat/health verboten), aktiv_ignorieren (Aenderung von forward wird verworfen), user_403 (rest/user verboten), user, pw, csrf ("header" = Token im Antwortkopf, "cookie" = nur im JWT des Anmelde-Cookies), mfa, ablauf (naechste Abfrage 401, einmalig), nur_lesen (Aenderungen 403).
  * Nachgebildet ist UniFi OS: Anmeldung unter /api/auth/login, Network-Schnittstelle unter /proxy/network, Aenderungen nur mit X-CSRF-Token.
  */
 $dir = (string)getenv('UNI_FAKE_DIR');
@@ -75,6 +75,13 @@ if ($methode === 'GET') {
     if ($rest === 'stat/sta') {
         $log('GET sta');
         $antwort(200, $meta($state['clients']));
+    }
+    if ($rest === 'stat/health') {
+        $log('GET health');
+        if (!empty($ctl['health_403'])) {
+            $antwort(403, ['code' => 'FORBIDDEN']);
+        }
+        $antwort(200, $meta($state['health'] ?? []));
     }
     if ($rest === 'rest/user') {
         $log('GET user');

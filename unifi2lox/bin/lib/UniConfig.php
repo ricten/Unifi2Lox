@@ -6,8 +6,8 @@
  * Die Geraete kommen vom Gateway (stat/device); hier stehen nur die Einstellungen je Geraet, gespeichert unter der MAC-Adresse:
  * aktiv, Name im Topic, welche Ports veroeffentlicht werden und fuer welche Ports Befehle freigegeben sind (ab Werk keine).
  *
- * Clients: Nur die vom Benutzer ausdruecklich ausgewaehlten Clients stehen in der Konfiguration (MAC => Name im Topic), damit ihr Online-Status
- * auch dann gemeldet wird, wenn sie gerade nicht verbunden sind. Die Liste aller Clients mit IP gibt es nur in der Weboberflaeche (RAM).
+ * Clients: Nur die vom Benutzer ausdruecklich ausgewaehlten Clients stehen in der Konfiguration (MAC => Name im Topic und drei Schalter: Online-Status,
+ * IP-Adresse und aktive Verbindung mitsenden), damit ihr Online-Status auch dann gemeldet wird, wenn sie gerade nicht verbunden sind. Die Liste aller Clients mit IP gibt es nur in der Weboberflaeche (RAM).
  */
 final class UniConfig
 {
@@ -24,7 +24,7 @@ final class UniConfig
             'verkehr' => false,          // Datenraten (rx_bps, tx_bps) je Port veroeffentlichen
             'mqtt' => ['eigener_broker' => false, 'host' => '', 'port' => 1883, 'benutzer' => '', 'passwort' => ''],
             'geraete' => [],             // MAC => Einstellungen
-            'clients' => [],             // MAC => ['name' => Name im Topic ('' = Name aus dem Gateway)]: Clients, deren Online-Status per MQTT gemeldet wird
+            'clients' => [],             // MAC => ['name' => Name im Topic ('' = Name aus dem Gateway), 'online' => Online-Status senden, 'ip' => IP senden, 'verbindung' => aktive Verbindung senden]
         ];
     }
 
@@ -121,7 +121,10 @@ final class UniConfig
         foreach (is_array($c['clients'] ?? null) ? $c['clients'] : [] as $mac => $x) {
             $mac = self::cleanMac((string)$mac);
             if ($mac !== '' && is_array($x)) {
-                $cl[$mac] = ['name' => Util::name((string)($x['name'] ?? ''))];
+                $f = self::clientSchalter($x);
+                if ($f['online'] || $f['ip'] || $f['verbindung']) {
+                    $cl[$mac] = ['name' => Util::name((string)($x['name'] ?? ''))] + $f;
+                }
             }
         }
         $out['clients'] = $cl;
@@ -184,10 +187,10 @@ final class UniConfig
                 if ($mac === '' || !is_array($p)) {
                     continue;
                 }
-                if (empty($p['aktiv'])) {
+                if (empty($p['aktiv']) && empty($p['ip']) && empty($p['verbindung'])) {
                     unset($cl[$mac]);
                 } else {
-                    $cl[$mac] = ['name' => Util::name((string)($p['name'] ?? ''))];
+                    $cl[$mac] = ['name' => Util::name((string)($p['name'] ?? '')), 'online' => !empty($p['aktiv']), 'ip' => !empty($p['ip']), 'verbindung' => !empty($p['verbindung'])];
                 }
             }
             $used = [];
@@ -238,6 +241,9 @@ final class UniConfig
                 $name = Util::name((string)($d['name'] ?? ''));
             }
             $name = $name !== '' ? $name : Util::name((string)($d['typ'] ?? 'geraet')) . ($i + 1);
+            if (in_array($name, ['netz', 'internet', 'client', 'status', 'befehl'], true)) {      // eigene Topic-Zweige des Plugins
+                $name .= '_geraet';
+            }
             $base = $name;
             for ($n = 2; isset($used[$name]); $n++) {
                 $name = $base . '_' . $n;
@@ -246,6 +252,15 @@ final class UniConfig
             $out[$mac] = $name;
         }
         return $out;
+    }
+
+    /**
+     * Die drei Schalter eines gewaehlten Clients. Eintraege ohne Angabe "online" (Konfiguration bis 0.3.0) melden den Online-Status, wie bisher.
+     * @return array{online:bool,ip:bool,verbindung:bool}
+     */
+    public static function clientSchalter(array $x): array
+    {
+        return ['online' => array_key_exists('online', $x) ? !empty($x['online']) : true, 'ip' => !empty($x['ip']), 'verbindung' => !empty($x['verbindung'])];
     }
 
     /**

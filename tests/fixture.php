@@ -7,6 +7,7 @@
  *   Switch   (usw)  MAC ...02  26 Ports, 24 mit PoE (Budget 220 W), Uplink an Port 22, Access Points an Port 4 und 6
  *   AP 1     (uap)  MAC ...03  6 Clients (4 im 2,4-, 2 im 5-GHz-Band), davon 1 Gast
  *   AP 2     (uap)  MAC ...04  2 Clients (beide 5 GHz)
+ *   Internet (stat/health, uplink/wan1/wan2 des Gateways): erfundener Anbieter, ASN 64496 und IP 203.0.113.7 (Dokumentationsbereiche), PPPoE-Sitzung 126613 s
  *   Bekannte Clients (rest/user): die 19 verbundenen plus 3 derzeit nicht verbundene (MAC 02:00:00:00:30:xx)
  */
 const FX_GW = '02:00:00:00:00:01';
@@ -17,7 +18,9 @@ const FX_AP2 = '02:00:00:00:00:04';
 function fx_geraete(): array
 {
     $gw = ['_id' => 'id-gw', 'mac' => FX_GW, 'type' => 'udm', 'model' => 'UDMA6A8', 'name' => 'Gateway', 'state' => 1, 'num_sta' => 19, 'guest-num_sta' => 1,
-        'total_max_power' => 30, 'total_used_power' => 0, 'port_table' => [], 'uplink' => ['type' => 'wire', 'uplink_mac' => '02:00:00:00:99:99', 'uplink_remote_port' => 1]];
+        'total_max_power' => 30, 'total_used_power' => 0, 'port_table' => [],
+        'uplink' => ['type' => 'wire', 'uplink_mac' => '02:00:00:00:99:99', 'uplink_remote_port' => 1, 'up' => true, 'name' => 'ppp0', 'uptime' => 126613, 'latency' => 6, 'ip' => '203.0.113.7', 'speed' => 10000],
+        'wan1' => ['up' => true, 'speed' => 1000, 'ip' => '203.0.113.7', 'name' => 'eth4'], 'wan2' => ['up' => false, 'speed' => 10, 'name' => 'eth6']];
     for ($i = 1; $i <= 7; $i++) {
         $gw['port_table'][] = ['port_idx' => $i, 'name' => 'Port ' . $i, 'up' => in_array($i, [1, 5], true), 'speed' => in_array($i, [1, 5], true) ? 1000 : 10, 'media' => $i >= 6 ? 'SFP+' : '2.5GE',
             'is_uplink' => false, 'port_poe' => $i === 4, 'poe_enable' => false, 'poe_good' => false, 'poe_power' => '0.00', 'poe_voltage' => $i === 4 ? '1.12' : '0.00', 'poe_current' => '0.00',
@@ -60,6 +63,18 @@ function fx_geraete(): array
             'uplink' => ['type' => 'wire', 'uplink_mac' => FX_SW, 'uplink_remote_port' => $port], 'port_table' => []];
     };
     return [$gw, $sw, $ap('id-ap1', FX_AP1, 'AP Wohnzimmer', 4, 6, 1, 4, 2), $ap('id-ap2', FX_AP2, 'AP Dachboden', 6, 2, 0, 0, 2)];
+}
+
+/** Antwort von stat/health (Auszug): Subsystem wan mit Anbieter und WAN-IP, www mit Latenz, Datenrate und Speedtest. */
+function fx_health(int $xputDown = 0): array
+{
+    return [
+        ['subsystem' => 'wan', 'status' => 'ok', 'isp_name' => 'Beispiel Telekom AG', 'isp_organization' => 'Beispiel Telekom AG', 'asn' => 64496, 'wan_ip' => '203.0.113.7',
+            'uptime_stats' => ['WAN' => ['availability' => 99.9, 'latency_average' => 7, 'uptime' => 736261], 'WAN2' => ['downtime' => 736277]]],
+        ['subsystem' => 'www', 'status' => 'ok', 'latency' => 6, 'drops' => 8, 'rx_bytes-r' => 1250000, 'tx_bytes-r' => 62500, 'uptime' => 126613, 'speedtest_lastrun' => 1700000000, 'speedtest_ping' => $xputDown > 0 ? 9 : 0,
+            'xput_down' => (float)$xputDown, 'xput_up' => $xputDown > 0 ? 45.5 : 0.0],
+        ['subsystem' => 'lan', 'status' => 'ok', 'num_user' => 29],
+    ];
 }
 
 /** Antwort von rest/user: alle bekannten Clients, auch die nicht verbundenen. */

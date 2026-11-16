@@ -183,21 +183,54 @@ check('Clients: zusammengefuehrt (22), 19 online und 3 offline, Namen (Name, Hos
     $an['020000001003']['name'], $an['020000001001']['name'], $an['020000001002']['name'], $an['020000001002']['ip'], $an['020000003003']['name'], $an['020000001001']['ort']],
     [22, 19, false, 'Alter Drucker', 1699900000, 'Kabel-Client 3', 'host1', '', '192.0.2.12', '', 'Switch Keller · Port 1']);
 check('Clients: ohne Liste der bekannten nur die verbundenen', count(UniDaten::clientAnzeige($m, [])), 19);
-$pc = UniConfig::fromPost(UniConfig::defaults(), ['clients' => ['02:00:00:00:10:03' => ['da' => '1', 'aktiv' => '1', 'name' => 'Küche Licht'], '020000001002' => ['da' => '1', 'aktiv' => '1', 'name' => ''],
-    'zz' => ['aktiv' => '1'], '02:00:00:00:30:01' => ['da' => '1', 'aktiv' => '1', 'name' => 'Küche Licht'], '020000001001' => ['da' => '1']]]);
-check('Konfiguration Clients: Auswahl gespeichert, Namen ASCII und eindeutig, ungueltige MAC fehlt, nicht gewaehlte fehlen',
-    $pc['clients'], ['020000001003' => ['name' => 'kueche_licht'], '020000001002' => ['name' => ''], '020000003001' => ['name' => 'kueche_licht_2']]);
+$pc = UniConfig::fromPost(UniConfig::defaults(), ['clients' => ['02:00:00:00:10:03' => ['da' => '1', 'aktiv' => '1', 'name' => 'Küche Licht'], '020000001002' => ['da' => '1', 'aktiv' => '1', 'ip' => '1', 'verbindung' => '1', 'name' => ''],
+    'zz' => ['aktiv' => '1'], '02:00:00:00:30:01' => ['da' => '1', 'ip' => '1', 'name' => 'Küche Licht'], '020000001001' => ['da' => '1']]]);
+check('Konfiguration Clients: Auswahl mit den drei Schaltern gespeichert (auch nur IP), Namen ASCII und eindeutig, ungueltige MAC fehlt, Zeile ohne Schalter fehlt',
+    $pc['clients'], ['020000001003' => ['name' => 'kueche_licht', 'online' => true, 'ip' => false, 'verbindung' => false], '020000001002' => ['name' => '', 'online' => true, 'ip' => true, 'verbindung' => true],
+        '020000003001' => ['name' => 'kueche_licht_2', 'online' => false, 'ip' => true, 'verbindung' => false]]);
 $pc2 = UniConfig::fromPost($pc, ['clients' => ['020000001002' => ['da' => '1']], 'verkehr_gesendet' => '1']);
 check('Konfiguration Clients: abgewaehlte Zeile wird entfernt, nicht gesendete bleiben', array_keys($pc2['clients']), ['020000001003', '020000003001']);
 check('Konfiguration Clients: Beitrag ohne Clients aendert nichts, Standard leer', [UniConfig::fromPost($pc, ['verkehr_gesendet' => '1'])['clients'] === $pc['clients'], UniConfig::defaults()['clients']], [true, []]);
-file_put_contents("$dir/c2.json", json_encode(['clients' => ['02:00:00:00:10:03' => ['name' => 'ä ö'], 'zz' => ['name' => 'x'], '02:00:00:00:10:04' => 'kaputt', '020000001005' => []]]));
-check('Konfiguration laden: Clients bereinigt', UniConfig::load("$dir/c2.json")['clients'], ['020000001003' => ['name' => 'ae_oe'], '020000001005' => ['name' => '']]);
-$cfgCl = ['clients' => ['020000001003' => ['name' => ''], '020000001002' => ['name' => ''], '020000003001' => ['name' => 'Drucker'], '020000003003' => ['name' => ''], '020000009999' => ['name' => ''], '020000001001' => ['name' => 'drucker']]];
+file_put_contents("$dir/c2.json", json_encode(['clients' => ['02:00:00:00:10:03' => ['name' => 'ä ö'], 'zz' => ['name' => 'x'], '02:00:00:00:10:04' => 'kaputt', '020000001005' => [], '020000001006' => ['name' => 'x', 'online' => false, 'ip' => true],
+    '020000001007' => ['name' => 'y', 'online' => false]]]));
+check('Konfiguration laden: Clients bereinigt; ohne Angabe online = an (Konfiguration bis 0.3.0), Eintrag ohne jeden Schalter faellt weg', UniConfig::load("$dir/c2.json")['clients'],
+    ['020000001003' => ['name' => 'ae_oe', 'online' => true, 'ip' => false, 'verbindung' => false], '020000001005' => ['name' => '', 'online' => true, 'ip' => false, 'verbindung' => false],
+        '020000001006' => ['name' => 'x', 'online' => false, 'ip' => true, 'verbindung' => false]]);
+$cfgCl = ['clients' => ['020000001003' => ['name' => '', 'online' => true, 'ip' => true, 'verbindung' => true], '020000001002' => ['name' => '', 'online' => true, 'ip' => true, 'verbindung' => false],
+    '020000003001' => ['name' => 'Drucker', 'online' => true, 'ip' => true, 'verbindung' => false], '020000003003' => ['name' => '', 'online' => true, 'ip' => false, 'verbindung' => false],
+    '020000009999' => ['name' => '', 'online' => false, 'ip' => false, 'verbindung' => true], '020000001001' => ['name' => 'drucker', 'online' => true, 'ip' => false, 'verbindung' => true]]];
 $cn = UniConfig::clientNamen($cfgCl, $an);
 check('Clients: Name im Topic (gewaehlt, sonst Gateway-Name, sonst client_<MAC-Ende>), doppelte nummeriert', array_values($cn),
     ['kabel-client_3', 'client_001002', 'drucker', 'client_003003', 'client_009999', 'drucker_2']);
-check('Clients: MQTT-Werte nur Online-Status (1 verbunden, 0 sonst, auch unbekannte)', UniDaten::clientWerte($an, $cn),
-    ['kabel-client_3/online' => '1', 'client_001002/online' => '1', 'drucker/online' => '0', 'client_003003/online' => '0', 'client_009999/online' => '0', 'drucker_2/online' => '1']);
+check('Clients: MQTT-Werte je nach Schalter: Online-Status, IP (aktuelle, offline die zuletzt bekannte, ohne IP fehlt das Topic) und aktive Verbindung (nicht verbunden: Text)', UniDaten::clientWerte($an, $cn, $cfgCl['clients']),
+    ['kabel-client_3/online' => '1', 'kabel-client_3/ip' => '192.0.2.13', 'kabel-client_3/verbindung' => 'Switch Keller · Port 3', 'client_001002/online' => '1', 'client_001002/ip' => '192.0.2.12',
+        'drucker/online' => '0', 'drucker/ip' => '192.0.2.201', 'client_003003/online' => '0', 'client_009999/verbindung' => 'nicht verbunden', 'drucker_2/online' => '1', 'drucker_2/verbindung' => 'Switch Keller · Port 1']);
+check('Clients: Verbindung ohne bekannten Ort = Kabel oder WLAN; IP leer = kein Topic; Eintrag ohne Schalter-Angaben = nur Online-Status',
+    [UniDaten::clientWerte(['020000000001' => ['online' => true, 'ip' => '', 'ort' => '', 'kabel' => false]], ['020000000001' => 'x'], ['020000000001' => ['online' => true, 'ip' => true, 'verbindung' => true]]),
+        UniDaten::clientWerte(['020000000001' => ['online' => true, 'ip' => '', 'ort' => '', 'kabel' => true]], ['020000000001' => 'x'], ['020000000001' => ['verbindung' => true, 'online' => false]]),
+        UniDaten::clientWerte(['020000000001' => ['online' => true, 'ip' => '192.0.2.5', 'ort' => 'a', 'kabel' => true]], ['020000000001' => 'x'], ['020000000001' => ['name' => '']])],
+    [['x/online' => '1', 'x/verbindung' => 'WLAN'], ['x/verbindung' => 'Kabel'], ['x/online' => '1']]);
+// ---------------------------------------------------------------- Unit: Internet (WAN)
+$inet = UniDaten::internet(fx_geraete(), fx_health());
+check('Internet: Anbieter, ASN, Status, Dauer der Sitzung, IP, Latenz, Verfuegbarkeit, Anschluesse, Link, Datenrate; Speedtest ohne gueltige Werte fehlt',
+    [$inet['anbieter'], $inet['asn'], $inet['online'], $inet['dauer'], $inet['ip'], $inet['latenz'], $inet['verfuegbarkeit'], $inet['wan1_up'], $inet['wan2_up'], $inet['link_mbit'], $inet['rx_bps'], $inet['tx_bps'], $inet['speedtest']],
+    ['Beispiel Telekom AG', 64496, true, 126613, '203.0.113.7', 6, 99.9, true, false, 1000, 10000000, 500000, null]);
+check('Internet: MQTT-Werte ohne Datenraten', UniDaten::internetWerte($inet, false), ['online' => '1', 'verbindungsdauer_s' => '126613', 'anbieter' => 'Beispiel Telekom AG', 'asn' => '64496', 'ip' => '203.0.113.7', 'latenz_ms' => '6',
+    'verfuegbarkeit_prozent' => '99.9', 'wan1_up' => '1', 'wan2_up' => '0', 'link_mbit' => '1000']);
+$inet2 = UniDaten::internet(fx_geraete(), fx_health(940));
+check('Internet: Speedtest mit gueltigen Werten, Datenraten nur mit Option', [$inet2['speedtest'], array_intersect_key(UniDaten::internetWerte($inet2, true), array_flip(['speedtest_down_mbit', 'speedtest_up_mbit', 'speedtest_ping_ms', 'speedtest_ts', 'down_bps', 'up_bps'])),
+    isset(UniDaten::internetWerte($inet2, false)['down_bps'])],
+    [['down' => 940.0, 'up' => 45.5, 'ping' => 9, 'ts' => 1700000000], ['speedtest_down_mbit' => '940', 'speedtest_up_mbit' => '45.5', 'speedtest_ping_ms' => '9', 'speedtest_ts' => '1700000000', 'down_bps' => '10000000', 'up_bps' => '500000'], false]);
+$gwOff = fx_geraete();
+$gwOff[0]['uplink']['up'] = false;
+$gwOff[0]['wan1']['up'] = false;
+$inet3 = UniDaten::internet($gwOff, []);
+check('Internet: Verbindung getrennt = online 0 und Dauer 0; ohne stat/health fehlt der Anbieter, der Rest bleibt (IP aus dem Gateway-Eintrag)', [$inet3['online'], $inet3['dauer'], $inet3['anbieter'], $inet3['ip'], isset(UniDaten::internetWerte($inet3, false)['anbieter']), UniDaten::internetWerte($inet3, false)['online']],
+    [false, 0, '', '203.0.113.7', false, '0']);
+check('Internet: ohne Gateway oder ohne WAN-Daten null', [UniDaten::internet([fx_geraete()[1], fx_geraete()[2]], fx_health()), UniDaten::internet([['type' => 'udm', 'mac' => '02:00:00:00:00:01']], [])], [null, null]);
+check('Dauer als Text', [UniDaten::dauerText(126613), UniDaten::dauerText(30), UniDaten::dauerText(3600), UniDaten::dauerText(2 * 86400 + 300), UniDaten::dauerText(86400 + 61)], ['1 Tag 11 Std 10 Min', 'weniger als 1 Min', '1 Std 0 Min', '2 Tage 0 Std 5 Min', '1 Tag 0 Std 1 Min']);
+check('Namen: eigene Topic-Zweige (netz, internet, client, status, befehl) werden nicht als Geraetename verwendet', array_values(UniConfig::namen(UniConfig::defaults(), [['mac' => '020000000001', 'name' => 'Internet', 'typ' => 'switch'],
+    ['mac' => '020000000002', 'name' => 'Netz', 'typ' => 'switch'], ['mac' => '020000000003', 'name' => 'Client', 'typ' => 'ap']])), ['internet_geraet', 'netz_geraet', 'client_geraet']);
 check('Klarname zum Modellcode (unbekannte Codes unveraendert, MQTT behaelt den Code)', [UniDaten::klarname('U7PG2'), UniDaten::klarname('UAP6MP'), UniDaten::klarname('us24p250'), UniDaten::klarname('UDMA6A8'), UniDaten::klarname('XYZ-1'), UniDaten::klarname(''),
     $byName['AP Wohnzimmer']['modell_name'], $byName['AP Wohnzimmer']['modell'], UniDaten::werte($byName['AP Wohnzimmer'], null, false)['modell']], ['UAP-AC-Pro', 'U6-Pro', 'US-24-250W', 'UCG-Fiber', 'XYZ-1', '', 'U6-Pro', 'UAP6MP', 'UAP6MP']);
 check('Geraeteart aus dem Typ', [UniDaten::typ('udm'), UniDaten::typ('UGW'), UniDaten::typ('usw'), UniDaten::typ('uap'), UniDaten::typ('ubb'), UniDaten::typ('xyz')], ['gateway', 'gateway', 'switch', 'ap', 'ap', 'andere']);
@@ -287,7 +320,7 @@ $resetGw = function (array $ctl = []) use ($gdir, $gwCtl) {
     foreach (['gw.log', 'sessions.json'] as $f) {
         @unlink("$gdir/$f");
     }
-    file_put_contents("$gdir/state.json", json_encode(['geraete' => fx_geraete(), 'clients' => fx_clients(), 'bekannt' => fx_bekannte()]));
+    file_put_contents("$gdir/state.json", json_encode(['geraete' => fx_geraete(), 'clients' => fx_clients(), 'bekannt' => fx_bekannte(), 'health' => fx_health()]));
     $gwCtl($ctl + ['user' => GWUSER, 'pw' => GWPW, 'csrf' => 'header']);
 };
 
@@ -347,6 +380,11 @@ if ($ext) {
     check('A: Werte Access Points und Netz', [$has('unifi/ap_wohnzimmer/clients', '6'), $has('unifi/ap_wohnzimmer/clients_2g', '4'), $has('unifi/ap_wohnzimmer/clients_5g', '2'), $has('unifi/ap_wohnzimmer/clients_gast', '1'),
         $has('unifi/ap_dachboden/clients', '2'), $has('unifi/netz/clients', '19'), $has('unifi/netz/clients_kabel', '11'), $has('unifi/netz/clients_wlan', '8'), $has('unifi/netz/poe_gesamt_w', '31.07')], [true, true, true, true, true, true, true, true, true]);
     check('A: Gateway-Port ohne Last, keine Datenraten ohne Option', [$has('unifi/gateway/port4/poe_an', '0'), str_contains($mlog(), 'rx_bps')], [true, false]);
+    check('A: Internet (Anbieter, Status, Dauer, IP, Latenz, Verfuegbarkeit, Anschluesse, Link); kein Speedtest ohne gueltige Werte, keine Datenraten ohne Option',
+        [$has('unifi/internet/anbieter', 'Beispiel Telekom AG'), $has('unifi/internet/asn', '64496'), $has('unifi/internet/online', '1'), $has('unifi/internet/verbindungsdauer_s', '126613'), $has('unifi/internet/ip', '203.0.113.7'),
+            $has('unifi/internet/latenz_ms', '6'), $has('unifi/internet/verfuegbarkeit_prozent', '99.9'), $has('unifi/internet/wan1_up', '1'), $has('unifi/internet/wan2_up', '0'), $has('unifi/internet/link_mbit', '1000'),
+            str_contains($mlog(), 'unifi/internet/speedtest'), str_contains($mlog(), 'unifi/internet/down_bps')], [true, true, true, true, true, true, true, true, true, true, false, false]);
+    check('A: WAN-IP steht nicht im Log des Dienstes', str_contains($logA(), '203.0.113.7'), false);
     check('A: Lebenszeichen zaehler und ts', [str_contains($mlog(), "unifi/status/zaehler\t"), str_contains($mlog(), "unifi/status/ts\t")], [true, true]);
     check('A: nichts mit Leerzeichen im Topic, nichts retained gesendet', [(bool)preg_match('/^unifi\/[^\t]* [^\t]*\t/m', $mlog()), str_contains($mlog(), "\tR\n")], [false, false]);
     $netz = Util::jsonLoad("$dA/run/netz.json");
@@ -498,19 +536,25 @@ if ($ext) {
     check('F: ausgewaehlte Ports unter dem eigenen Namen, mit Datenraten', waitFor(fn() => $has('unifi/sw/port18/clients', '3') && $has('unifi/sw/port18/rx_bps', '4000000') && $has('unifi/sw/port1/up', '1'), 15), true);
     check('F: andere Ports fehlen', [str_contains($mlog(), 'unifi/sw/port4/'), str_contains($mlog(), 'unifi/sw/port25/'), str_contains($mlog(), 'unifi/switch_keller/')], [false, false, false]);
     check('F: Geraetewerte bleiben', $has('unifi/sw/poe_gesamt_w', '31.07'), true);
+    check('F: mit Option Datenraten auch am Internetanschluss', [$has('unifi/internet/down_bps', '10000000'), $has('unifi/internet/up_bps', '500000')], [true, true]);
     $stopWait($svc);
 
     // ---------------------------------------------------------------- I: Online-Status ausgewaehlter Clients
     $resetGw();
     $reset();
-    $clientCfg = ['clients' => ['020000001003' => ['name' => ''], '020000001002' => ['name' => ''], '020000003001' => ['name' => ''], '020000009999' => ['name' => '']]];
+    $clientCfg = ['clients' => ['020000001003' => ['name' => '', 'online' => true, 'ip' => true, 'verbindung' => true], '020000001002' => ['name' => '', 'online' => true, 'ip' => false, 'verbindung' => false],
+        '020000003001' => ['name' => '', 'online' => true, 'ip' => true, 'verbindung' => false], '020000009999' => ['name' => '', 'online' => true, 'ip' => false, 'verbindung' => false]]];
     $dI = $neuDir('I', $clientCfg);
     $svc = $starte($dI);
     check('I: Online-Status der ausgewaehlten Clients (verbunden 1, bekannt aber offline 0, unbekannt 0)', waitFor(fn() => $has('unifi/client/kabel-client_3/online', '1') && $has('unifi/client/client_001002/online', '1')
         && $has('unifi/client/alter_drucker/online', '0') && $has('unifi/client/client_009999/online', '0'), 15), true);
     check('I: nicht ausgewaehlte Clients fehlen in MQTT', [str_contains($mlog(), 'unifi/client/host1'), str_contains($mlog(), 'unifi/client/client_001001')], [false, false]);
-    check('I: keine IP-Adressen und keine Original-Clientnamen in MQTT, Log und Konfiguration', [str_contains($mlog(), '192.0.2.'), str_contains((string)@file_get_contents("$dI/unifi.log"), '192.0.2.'), str_contains((string)@file_get_contents("$dI/unifi.json"), '192.0.2.'),
-        str_contains($mlog(), 'Kabel-Client'), str_contains($mlog(), 'Alter Drucker')], [false, false, false, false, false]);
+    check('I: IP nur bei Clients mit Schalter IP (verbunden: aktuelle, offline: zuletzt bekannte)', [$has('unifi/client/kabel-client_3/ip', '192.0.2.13'), $has('unifi/client/alter_drucker/ip', '192.0.2.201'), str_contains($mlog(), 'unifi/client/client_001002/ip'),
+        str_contains($mlog(), 'unifi/client/client_009999/ip')], [true, true, false, false]);
+    check('I: aktive Verbindung nur bei Clients mit Schalter Verbindung', [$has('unifi/client/kabel-client_3/verbindung', 'Switch Keller · Port 3'), str_contains($mlog(), 'unifi/client/client_001002/verbindung'), str_contains($mlog(), 'unifi/client/alter_drucker/verbindung')],
+        [true, false, false]);
+    check('I: IPs und Namen nicht gewaehlter Clients und IPs ohne Schalter nicht in MQTT; IPs nicht im Log und nicht in der Konfiguration; keine Original-Clientnamen', [str_contains($mlog(), '192.0.2.11'), str_contains($mlog(), '192.0.2.12'), str_contains($mlog(), '192.0.2.202'), str_contains((string)@file_get_contents("$dI/unifi.log"), '192.0.2.'),
+        str_contains((string)@file_get_contents("$dI/unifi.json"), '192.0.2.'), str_contains($mlog(), 'Kabel-Client'), str_contains($mlog(), 'Alter Drucker'), str_contains($mlog(), 'host1')], [false, false, false, false, false, false, false, false]);
     $netzI = Util::jsonLoad("$dI/run/netz.json");
     check('I: Weboberflaeche bekommt alle Clients (verbunden und bekannt) im RAM', [count($netzI['modell']['client_liste'] ?? []), count($netzI['bekannt'] ?? []), str_contains((string)@file_get_contents("$dI/unifi.json"), 'Alter Drucker')], [19, 22, false]);
     check('I: Liste der bekannten Clients einmal geholt (nicht bei jeder Abfrage)', substr_count($glog(), 'GET user'), 1);
@@ -518,18 +562,22 @@ if ($ext) {
     $stI = json_decode((string)file_get_contents("$gdir/state.json"), true);
     $stI['clients'] = array_values(array_filter($stI['clients'], fn($c) => $c['mac'] !== '02:00:00:00:10:03'));
     file_put_contents("$gdir/state.json", json_encode($stI));
-    check('I: getrennter Client wird mit 0 gemeldet', waitFor(fn() => $has('unifi/client/kabel-client_3/online', '0'), 12), true);
+    check('I: getrennter Client wird mit 0 gemeldet, die aktive Verbindung mit "nicht verbunden"', waitFor(fn() => $has('unifi/client/kabel-client_3/online', '0') && $has('unifi/client/kabel-client_3/verbindung', 'nicht verbunden'), 12), true);
     $stI['clients'][] = ['mac' => '02:00:00:00:10:03', 'ip' => '192.0.2.13', 'is_wired' => true, 'sw_mac' => FX_SW, 'sw_port' => 1, 'name' => 'Kabel-Client 3'];
     file_put_contents("$gdir/state.json", json_encode($stI));
-    check('I: wieder verbunden: 1', waitFor(fn() => substr_count($mlog(), "unifi/client/kabel-client_3/online\t1") >= 2, 12), true);
+    check('I: wieder verbunden: 1 und die neue Verbindung (jetzt an Port 1)', waitFor(fn() => substr_count($mlog(), "unifi/client/kabel-client_3/online\t1") >= 2 && $has('unifi/client/kabel-client_3/verbindung', 'Switch Keller · Port 1'), 12), true);
+    check('I: die IP bleibt nach dem Trennen die zuletzt bekannte (kein erneutes Senden, keine Leermeldung)', substr_count($mlog(), "unifi/client/kabel-client_3/ip\t"), 1);
     $stopWait($svc);
 
     // ---------------------------------------------------------------- J: Liste der bekannten Clients nicht lesbar (403) ist kein Fehler
-    $resetGw(['user_403' => true]);
+    $resetGw(['user_403' => true, 'health_403' => true]);
     $reset();
     $dJ = $neuDir('J', $clientCfg);
     $svc = $starte($dJ);
     check('J: ohne rest/user: status/ok 1, verbundene Clients 1, offline bekannte 0', waitFor(fn() => $has('unifi/status/ok', '1') && $has('unifi/client/kabel-client_3/online', '1') && $has('unifi/client/client_003001/online', '0'), 15), true);
+    check('J: ohne stat/health: Internet-Status und IP aus dem Gateway-Eintrag, kein Anbieter', [$has('unifi/internet/online', '1'), $has('unifi/internet/ip', '203.0.113.7'), $has('unifi/internet/verbindungsdauer_s', '126613'), str_contains($mlog(), 'unifi/internet/anbieter')],
+        [true, true, true, false]);
+    check('J: Warnung zu stat/health im Log', str_contains((string)@file_get_contents("$dJ/unifi.log"), 'Internetdaten (stat/health) nicht lesbar'), true);
     check('J: Warnung im Log, Weboberflaeche ohne bekannte Clients', [str_contains((string)@file_get_contents("$dJ/unifi.log"), 'Liste der bekannten Clients nicht lesbar'), count(Util::jsonLoad("$dJ/run/netz.json")['bekannt'] ?? [])], [true, 0]);
     $stopWait($svc);
 
@@ -642,7 +690,7 @@ file_put_contents("$uiDir/log/test.log", "2026-01-01 <INFO> Testzeile\n");
 $uiConf = UniConfig::defaults();
 $uiConf['controller'] = ['adresse' => 'https://gw.example.invalid', 'benutzer' => 'uibenutzer', 'passwort' => 'uigeheim777', 'seite' => 'default', 'tls_pruefen' => false];
 $uiConf['geraete'] = [$macSw ?? '020000000002' => ['aktiv' => true, 'name' => 'keller', 'ports' => '1-8', 'befehle_ports' => '11-13', 'schalt_ports' => '15, 16']];
-$uiConf['clients'] = ['020000001003' => ['name' => 'kabel-client_3'], '020000003001' => ['name' => ''], '020000009999' => ['name' => '']];
+$uiConf['clients'] = ['020000001003' => ['name' => 'kabel-client_3', 'online' => true, 'ip' => true, 'verbindung' => false], '020000003001' => ['name' => '', 'online' => true, 'ip' => false, 'verbindung' => true], '020000009999' => ['name' => '', 'online' => true, 'ip' => false, 'verbindung' => false]];
 $uiConf['mqtt']['passwort'] = 'brokerpasswort77';
 Util::jsonSave("$uiDir/dev/unifi.json", $uiConf);
 foreach (['verbindung', 'geraete', 'netz', 'clients', 'mqtt', 'loxone', 'test', 'logs'] as $tab) {
@@ -672,8 +720,11 @@ check('UI Verbindung: angemeldet mit letzter Abfrage', [str_contains($o, '<b>ang
 $devsUi = fx_geraete();
 $devsUi[1]['port_table'][14]['enable'] = false;          // Port 15 des Switches abgeschaltet (wie in der Oberflaeche des Gateways)
 $devsUi[1]['port_table'][14]['forward'] = 'disabled';
-Util::jsonSave("$uiDir/dev/run/netz.json", ['zeit' => time(), 'modell' => $m0 = UniDaten::modell($devsUi, fx_clients()), 'bekannt' => UniDaten::bekannte(fx_bekannte())]);
+Util::jsonSave("$uiDir/dev/run/netz.json", ['zeit' => time(), 'modell' => $m0 = UniDaten::modell($devsUi, fx_clients()), 'bekannt' => UniDaten::bekannte(fx_bekannte()), 'internet' => UniDaten::internet(fx_geraete(), fx_health(940))]);
 [$o, $e] = $uiPage('netz');
+check('UI Netzwerk: Karte Internet (Anbieter, AS, Status, Dauer, IP, Latenz, Verfuegbarkeit, Anschluesse, Datenrate, Speedtest)', [str_contains($o, '<h4>Internet</h4>'), str_contains($o, 'Beispiel Telekom AG'), str_contains($o, '(AS64496)'), str_contains($o, '1 Tag 11 Std 10 Min'),
+    str_contains($o, '203.0.113.7'), str_contains($o, '6 ms'), str_contains($o, '99,9 %'), str_contains($o, 'WAN 1: <span class="uni-led uni-led-ok"></span> Link'), str_contains($o, 'WAN 2: <span class="uni-led uni-led-aus"></span> kein Link'), str_contains($o, '(1 Gbit/s)'),
+    str_contains($o, '↓ 10 Mbit/s · ↑ 0,5 Mbit/s'), str_contains($o, '↓ 940 · ↑ 45,5 Mbit/s, Ping 9 ms')], [true, true, true, true, true, true, true, true, true, true, true, true]);
 check('UI Netzwerk: abgeschalteter Port steht als inaktiv da (genau einer), andere Ports ohne Link nicht', [substr_count($o, 'uni-led-inaktiv" title="Port abgeschaltet"></span> inaktiv <span'), str_contains($o, '<b>inaktiv'), str_contains($o, '.uni-led-inaktiv { background:#fff; }'), str_contains($o, 'kein Link')], [1, false, true, true]);
 check('UI Netzwerk: Geraete, Ports, PoE, Clients je Port, Access-Point-Clients', [str_contains($o, 'Switch Keller'), str_contains($o, 'US-24-250W'), str_contains($o, '6,2 W') || str_contains($o, '6.2 W'), str_contains($o, 'AP Wohnzimmer</b> (UniFi-Gerät)'), str_contains($o, 'WLAN-Client 1'),
     str_contains($o, '4 im 2,4 GHz'), str_contains($o, 'Kabel-Client 3'), str_contains($o, '19 Clients (11 Kabel, 8 WLAN)'), $bad($o, $e)], [true, true, true, true, true, true, true, true, false]);
@@ -684,6 +735,10 @@ check('UI Clients: verbundene Clients mit IP, Ort und Status, gewaehlte (auch of
 check('UI Clients: Schalter und Namensfeld je Zeile, Auswahl aus der Konfiguration', [str_contains($o, 'name="clients[020000001003][aktiv]" value="1" checked'), str_contains($o, 'name="clients[020000001001][aktiv]" value="1"><span'), str_contains($o, 'name="clients[020000001003][name]" value="kabel-client_3"'),
     str_contains($o, 'name="clients[020000001001][da]"'), str_contains($o, 'name="clients[020000001001][name]" value="host1"'), str_contains($o, 'name="clients[020000001002][name]" value="client_001002"'), str_contains($o, 'unifi/client/&lt;name&gt;/online')],
     [true, true, true, true, true, true, true]);
+check('UI Clients: Schalter IP und Verbindung je Zeile (gewaehlt/nicht gewaehlt), Spaltenkoepfe', [str_contains($o, 'name="clients[020000001003][ip]" value="1" checked'), str_contains($o, 'name="clients[020000001003][verbindung]" value="1"><span'),
+    str_contains($o, 'name="clients[020000003001][verbindung]" value="1" checked'), str_contains($o, 'name="clients[020000003001][ip]" value="1"><span'), str_contains($o, 'name="clients[020000001001][ip]" value="1"><span'),
+    str_contains($o, 'name="clients[020000001001][verbindung]" value="1"><span'), str_contains($o, 'Online-Status senden</a>'), str_contains($o, 'IP senden</a>'), str_contains($o, 'Verbindung senden</a>'), str_contains($o, '…/verbindung</code>')],
+    [true, true, true, true, true, true, true, true, true, true]);
 [$o] = $uiPage('clients', ['STUB_ALLE' => '1']);
 check('UI Clients: mit "alle bekannten" auch die nicht verbundenen', [str_contains($o, 'handy-gast'), str_contains($o, '192.0.2.202'), str_contains($o, '(ohne Namen)'), str_contains($o, 'nur verbundene und gewählte anzeigen')], [true, true, true, true]);
 $pos = fn(string $o, string $s) => strpos($o, $s);
@@ -700,6 +755,8 @@ check('UI Clients: nach IP absteigend, leere IP bleibt am Ende (unbekannter gewa
     str_contains($o, 'IP-Adresse</a> ▼')], [true, true, true, true]);
 [$o] = $uiPage('clients', ['STUB_GET' => 'sort=auswahl&dir=asc']);
 check('UI Clients: nach Auswahl (gewaehlte zuerst)', [$pos($o, '02:00:00:00:10:03') < $pos($o, '02:00:00:00:10:01')], [true]);
+[$o] = $uiPage('clients', ['STUB_GET' => 'sort=sip&dir=asc']);
+check('UI Clients: nach "IP senden" (gewaehlter vor nicht gewaehltem), nach "Verbindung senden"', [$pos($o, '02:00:00:00:10:03') < $pos($o, '02:00:00:00:10:01'), $pos(($uiPage('clients', ['STUB_GET' => 'sort=sverb&dir=asc']))[0], '02:00:00:00:30:01') < $pos(($uiPage('clients', ['STUB_GET' => 'sort=sverb&dir=asc']))[0], '02:00:00:00:10:01')], [true, true]);
 [$o] = $uiPage('clients', ['STUB_GET' => 'sort=auswahl&dir=desc']);
 check('UI Clients: nach Auswahl absteigend (nicht gewaehlte zuerst)', [$pos($o, '02:00:00:00:10:01') < $pos($o, '02:00:00:00:10:03')], [true]);
 [$o] = $uiPage('clients', ['STUB_GET' => 'sort=name&dir=desc']);
@@ -718,7 +775,7 @@ check('UI Geraete: Name, Portauswahl, Befehlsfreigabe, Hinweis auf Stromlos', [s
 check('UI Geraete: Platzhalter zeigt den Namen aus dem Gateway, Access Point ohne Port- und Befehlsfelder', [str_contains($o, 'placeholder="ap_wohnzimmer"'), str_contains($o, 'name="geraete[020000000003][ports]"'), str_contains($o, 'name="geraete[020000000003][befehle_ports]"'), str_contains($o, 'name="geraete[020000000003][schalt_ports]"')], [true, false, false, false]);
 [$o] = $uiPage('loxone', ['STUB_UDP' => '12345']);
 check('UI Loxone: Topic-Tabelle und Befehle mit UDP-Port und Quittung', [str_contains($o, 'unifi/&lt;gerät&gt;/port&lt;nr&gt;/poe_w') || str_contains($o, 'port<nr>/poe_w'), str_contains($o, 'unifi/status/zaehler'), str_contains($o, '/dev/udp/&lt;LoxBerry-IP&gt;/12345'),
-    str_contains($o, 'unifi/befehl/keller/port&lt;nr&gt;/poe'), str_contains($o, 'neustart'), str_contains($o, 'quittung'), str_contains($o, 'unifi/befehl/keller/port&lt;nr&gt;/aktiv'), str_contains($o, 'port&lt;nr&gt;/aktiv</code> zeigt'), str_contains($o, 'unifi/client/&lt;name&gt;/online') || str_contains($o, 'unifi/client/<name>/online')], [true, true, true, true, true, true, true, true, true]);
+    str_contains($o, 'unifi/befehl/keller/port&lt;nr&gt;/poe'), str_contains($o, 'neustart'), str_contains($o, 'quittung'), str_contains($o, 'unifi/befehl/keller/port&lt;nr&gt;/aktiv'), str_contains($o, 'port&lt;nr&gt;/aktiv</code> zeigt'), str_contains($o, 'unifi/client/&lt;name&gt;/online') || str_contains($o, 'unifi/client/<name>/online'), str_contains($o, 'unifi/internet/verbindungsdauer_s'), str_contains($o, 'unifi/internet/anbieter'), str_contains($o, 'unifi/client/&lt;name&gt;/verbindung') || str_contains($o, 'unifi/client/<name>/verbindung')], [true, true, true, true, true, true, true, true, true, true, true, true]);
 [$o] = $uiPage('mqtt', ['STUB_UDP' => '12345']);
 check('UI mqtt: Gateway V2, Abo fehlt, mit Anleitung', str_contains($o, 'Gateway V2: Das Abo „unifi/#“ fehlt'), true);
 file_put_contents("$uiDir/sys/subscriptions.json", json_encode(['Subscriptions' => [['Id' => 'unifi/#']]]));

@@ -2,6 +2,13 @@
 
 Alle Änderungen an diesem Plugin. Schema: MAJOR.MINOR.PATCH.
 
+## [0.3.0] - 2026-11-16
+
+### Neu
+- **Internetverbindung (nur lesend)** unter `unifi/internet/…`, aus dem Gateway (`stat/health`, Eintrag des Gateways in `stat/device`): `online` (0/1), `verbindungsdauer_s` (Dauer der aktuellen Sitzung beim Provider, springt bei einer Neueinwahl auf 0), `anbieter` und `asn` (z. B. Name des Internetanbieters und AS-Nummer), `ip` (öffentliche WAN-IP), `latenz_ms`, `verfuegbarkeit_prozent` (letzte 24 Stunden), `wan1_up`, `wan2_up` (Link der Anschlüsse), `link_mbit`; der letzte Speedtest des Gateways (`speedtest_down_mbit`, `speedtest_up_mbit`, `speedtest_ping_ms`, `speedtest_ts`) nur, wenn er gültige Werte lieferte; die Datenrate (`down_bps`, `up_bps`) nur mit der Option „Datenraten veröffentlichen“. Dazu eine Karte „Internet“ im Reiter „Netzwerk“. Ist `stat/health` nicht lesbar, fehlt nur der Anbieter (Warnung im Log), alles andere kommt aus dem Gateway-Eintrag. Ohne Gateway (nur Switches und Access Points) gibt es keine Internet-Topics.
+- **Je Client drei einzelne Schalter** im Reiter „Clients“: **Online-Status senden** (`unifi/client/<name>/online`), **IP senden** (`…/ip`; bei einem nicht verbundenen Client die zuletzt bekannte IP, ist keine bekannt, fehlt das Topic) und **Verbindung senden** (`…/verbindung`, Text: Switch und Port bzw. Access Point mit Band und WLAN, bei einem nicht verbundenen Client „nicht verbunden“). Die Tabelle ist nach jedem der drei Schalter sortierbar. Bestehende Auswahlen behalten den Online-Status und senden weder IP noch Verbindung, bis der Schalter gesetzt wird. IP-Adressen und Namen aller nicht gewählten Clients gehen weiterhin nie nach MQTT.
+- Die Namen `internet` und `client` sind (wie `netz`, `status`, `befehl`) für Topic-Zweige des Plugins reserviert: Heißt ein Gerät so, erhält sein Topic den Zusatz `_geraet`.
+
 ## [0.2.2] - 2026-11-16
 
 ### Geändert
@@ -22,7 +29,7 @@ Alle Änderungen an diesem Plugin. Schema: MAJOR.MINOR.PATCH.
 - Die Weboberfläche zeigt statt des Modellcodes die **Bezeichnung von Ubiquiti** (z. B. `U7PG2` → UAP-AC-Pro, `UAP6MP` → U6-Pro, `US24P250` → US-24-250W); unbekannte Codes bleiben unverändert. In MQTT (`unifi/<gerät>/modell`) steht weiter der Code.
 - **Reiter „Clients“:** alle Clients des Gateways mit Name, MAC-Adresse, **IP-Adresse**, Verbindung (Switch und Port bzw. Access Point, Band und WLAN) und Status; verbundene zuerst, auf Wunsch auch alle bekannten, derzeit nicht verbundenen Clients (Link „alle bekannten anzeigen“).
 - **Online-Status per MQTT je Client wählbar:** Schalter je Client, Name im Topic änderbar. Gemeldet wird `unifi/client/<name>/online` (1 = verbunden, 0 = nicht verbunden, auch für gewählte Clients, die gerade nicht verbunden oder dem Gateway unbekannt sind). Dazu liest der Dienst alle 5 Minuten die Liste der bekannten Clients (`rest/user`); ist sie nicht lesbar, ist das kein Fehler (nur Warnung im Log).
-- Gespeichert werden nur die gewählten Clients (MAC-Adresse und Name im Topic); Namen und IP-Adressen aller anderen Clients bleiben im Arbeitsspeicher, IP-Adressen gehen nie nach MQTT. Der vorgeschlagene Name im Topic wird beim Speichern festgeschrieben (ändert sich der Name im Gateway später, bleibt das Topic gleich).
+- Gespeichert werden nur die gewählten Clients (MAC-Adresse und Name im Topic); Namen und IP-Adressen aller anderen Clients bleiben im Arbeitsspeicher (ab 0.3.0 gehen IP und Verbindung nur bei den Clients nach MQTT, bei denen der Schalter gesetzt ist). Der vorgeschlagene Name im Topic wird beim Speichern festgeschrieben (ändert sich der Name im Gateway später, bleibt das Topic gleich).
 - Ein Port mit Port-Profil (`portconf_id`) wird nicht geschaltet (Quittung `abgelehnt`), weil dort das Profil statt der Weiterleitung gilt.
 
 ### Hinweise
