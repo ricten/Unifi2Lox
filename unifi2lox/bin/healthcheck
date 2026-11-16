@@ -1,0 +1,74 @@
+#!/usr/bin/php
+<?php
+/**
+ * Healthcheck fuer die LoxBerry-Healthcheck-Seite ("Mein LoxBerry" > "Healthcheck").
+ * Aufruf: "healthcheck title" (nur die Beschreibung) oder "healthcheck check" (Pruefung, Ausgabe als JSON).
+ * Statuscodes: 3 Fehler (Benachrichtigung und E-Mail), 4 Warnung, 5 OK, 6 Info.
+ * Der Dienst schreibt seinen Zustand jede Sekunde nach /dev/shm/<Ordner>/status.json; hier wird nur gelesen.
+ * Ein nicht erreichbares Geraet (Switch, Access Point) ist eine Warnung.
+ * Muss schnell sein und darf nichts anderes ausgeben als das JSON.
+ */
+$desc = 'Unifi2Lox: Dienst, Anmeldung am Gateway und Geräte';
+$arg = $argv[1] ?? '';
+if ($arg === 'title') {
+    echo $desc, "\n";
+    exit(0);
+}
+if ($arg !== 'check') {
+    exit(0);
+}
+
+$dev = getenv('UNI_DEV_DIR');
+$run = getenv('UNI_DEV_RUN') ?: ($dev ? $dev . '/run' : '/dev/shm/REPLACELBPPLUGINDIR');
+$log = $dev ? $dev . '/unifi.log' : 'REPLACELBPLOGDIR/unifi.log';
+
+function ergebnis(string $desc, int $status, string $text, string $log): void
+{
+    $o = ['desc' => $desc, 'status' => $status, 'result' => trim((string)preg_replace('/\s+/', ' ', $text))];
+    if (is_file($log)) {
+        $o['logfile'] = $log;           // nur mit echtem Wert, sonst fuehrt der Knopf ins Leere
+    }
+    echo json_encode($o, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), "\n";
+    exit(0);
+}
+
+$st = is_file("$run/status.json") ? json_decode((string)@file_get_contents("$run/status.json"), true) : null;
+if (!is_array($st) || time() - (int)($st['time'] ?? 0) > 60) {
+    ergebnis($desc, 3, 'Der Dienst läuft nicht (keine aktuelle Statusmeldung). Der Wächter startet ihn spätestens nach einer Minute neu; sonst im Plugin den Reiter „Test“ und die Logdatei ansehen.', $log);
+}
+if (empty($st['mqtt'])) {
+    ergebnis($desc, 4, 'Keine Verbindung zum MQTT-Broker: ' . ($st['mqtt_error'] ?? 'unbekannt'), $log);
+}
+$anm = is_array($st['anmeldung'] ?? null) ? $st['anmeldung'] : [];
+$as = (string)($anm['status'] ?? '');
+if ($as === 'keine_daten') {
+    ergebnis($desc, 6, 'Noch kein Zugang zum Gateway eingetragen (Plugin öffnen, Reiter „Verbindung“).', $log);
+}
+if ($as === 'falsch') {
+    ergebnis($desc, 3, 'Anmeldung am Gateway fehlgeschlagen: ' . ($anm['text'] ?? 'Benutzer oder Passwort falsch') . ' (Plugin öffnen, Reiter „Verbindung“).', $log);
+}
+if ($as === 'fehler') {
+    ergebnis($desc, 4, 'Gateway nicht erreichbar oder Anmeldung nicht möglich: ' . ($anm['text'] ?? 'unbekannt') . ' (der Dienst versucht es weiter).', $log);
+}
+if ($as !== 'ok') {
+    ergebnis($desc, 6, 'Anmeldung am Gateway läuft.', $log);
+}
+$ab = is_array($st['abfrage'] ?? null) ? $st['abfrage'] : [];
+if (empty($ab['ok']) && !empty($ab['zeit'])) {
+    ergebnis($desc, 4, 'Abfrage am Gateway fehlgeschlagen: ' . ($ab['text'] ?? 'unbekannt'), $log);
+}
+$geraete = is_array($st['geraete'] ?? null) ? $st['geraete'] : [];
+if (!$geraete) {
+    ergebnis($desc, 6, 'Noch keine Geräte abgefragt oder keines aktiv (Plugin öffnen, Reiter „Geräte“).', $log);
+}
+$aus = [];
+foreach ($geraete as $name => $g) {
+    if (empty($g['online'])) {
+        $aus[] = $name;
+    }
+}
+if ($aus) {
+    ergebnis($desc, 4, 'Geräte nicht erreichbar: ' . implode(', ', $aus), $log);
+}
+$cl = is_array($st['clients'] ?? null) ? (int)($st['clients']['gesamt'] ?? 0) : 0;
+ergebnis($desc, 5, count($geraete) . ' Geräte online, ' . $cl . ' Clients, Version ' . ($st['version'] ?? '?'), $log);
