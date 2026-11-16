@@ -2,6 +2,12 @@
 
 Alle Änderungen an diesem Plugin. Schema: MAJOR.MINOR.PATCH.
 
+## [0.3.1] - 2026-11-16
+
+### Geändert
+- Reiter „Netzwerk“, Spalte „Angeschlossen“: Am **Uplink-Port** eines Geräts steht jetzt das übergeordnete Gerät mit dessen Port (z. B. Switch Port 22: „Gateway (UniFi-Gerät, Port 1)“), und am Port des Gateways der angeschlossene Switch mit seinem Uplink-Port. Bei UniFi-Geräten am Port steht die Portnummer der Gegenstelle dabei.
+- Die **WAN-Anschlüsse des Gateways** sind gekennzeichnet: Am Port steht „(WAN 1)“ bzw. „(WAN 2)“, in „Angeschlossen“ „Internet (WAN 1, <Anbieter>)“ (den Anbieter nennt die Karte „Internet“, nur wenn der Anschluss Link hat).
+
 ## [0.3.0] - 2026-11-16
 
 ### Neu

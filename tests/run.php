@@ -127,8 +127,12 @@ check('Modell: Clientname = Name, sonst Hostname, sonst MAC', [$sw['ports'][1]['
 check('Modell: PoE je Port (nur wenn poe_good), Gesamtleistung und Budget', [$sw['ports'][4]['poe_w'], $sw['ports'][4]['poe_ma'], $sw['ports'][4]['poe_an'], $sw['ports'][5]['poe_w'], $sw['ports'][5]['poe_an'], $sw['poe_gesamt_w'], $sw['poe_max_w']],
     [6.19, 116.69, true, 0.0, false, 31.07, 220.0]);
 check('Modell: Link ohne Verbindung hat Speed 0, Uplink erkannt', [$sw['ports'][5]['speed'], $sw['ports'][5]['up'], $sw['ports'][22]['uplink'], $sw['ports'][1]['speed']], [0, false, true, 100]);
-check('Modell: UniFi-Geraete am Port (Access Points am Switch, Switch am Gateway)', [$sw['ports'][4]['gegenstelle'], $sw['ports'][6]['gegenstelle'], $byName['Gateway']['ports'][5]['gegenstelle'], $sw['ports'][7]['gegenstelle']],
+check('Modell: UniFi-Geraete am Port (Access Points am Switch, Switch am Gateway)', [$sw['ports'][4]['gegenstelle'], $sw['ports'][6]['gegenstelle'], $byName['Gateway']['ports'][1]['gegenstelle'], $sw['ports'][7]['gegenstelle']],
     ['AP Wohnzimmer', 'AP Dachboden', 'Switch Keller', '']);
+check('Modell: am eigenen Uplink-Port steht das uebergeordnete Geraet (Switch Port 22 -> Gateway Port 1), am Gateway-Port der Switch (Port 22)', [$sw['ports'][22]['gegenstelle'], $sw['ports'][22]['gegenstelle_port'], $byName['Gateway']['ports'][1]['gegenstelle_port'],
+    $sw['ports'][4]['gegenstelle_port']], ['Gateway', 1, 22, 0]);
+check('Modell: WAN-Anschluesse des Gateways (Port 5 = WAN 1, Port 7 = WAN 2), sonst leer', [$byName['Gateway']['ports'][5]['wan'], $byName['Gateway']['ports'][7]['wan'], $byName['Gateway']['ports'][1]['wan'], $sw['ports'][1]['wan'], $byName['Gateway']['ports'][5]['gegenstelle']],
+    ['WAN 1', 'WAN 2', '', '', '']);
 $ap1 = $byName['AP Wohnzimmer'];
 check('Modell: Access Point Clients, Gaeste, Baender, WLAN-Clients mit Signal', [$ap1['clients'], $ap1['clients_gast'], $ap1['funk'], count($ap1['wlan_clients']), $ap1['wlan_clients'][0]['essid'], $ap1['wlan_clients'][0]['band'], $ap1['wlan_clients'][0]['signal']],
     [6, 1, ['2g' => 4, '5g' => 2], 6, 'Heim', '2g', -50]);
@@ -722,6 +726,9 @@ $devsUi[1]['port_table'][14]['enable'] = false;          // Port 15 des Switches
 $devsUi[1]['port_table'][14]['forward'] = 'disabled';
 Util::jsonSave("$uiDir/dev/run/netz.json", ['zeit' => time(), 'modell' => $m0 = UniDaten::modell($devsUi, fx_clients()), 'bekannt' => UniDaten::bekannte(fx_bekannte()), 'internet' => UniDaten::internet(fx_geraete(), fx_health(940))]);
 [$o, $e] = $uiPage('netz');
+check('UI Netzwerk: WAN-Port des Gateways (Hinweis am Port und in "Angeschlossen" mit Anbieter), Uplink-Port zeigt das uebergeordnete Geraet, Gateway-Port den Switch',
+    [str_contains($o, '5 <span class="hinweis">(WAN 1)</span>'), str_contains($o, '7 <span class="hinweis">(WAN 2)</span>'), str_contains($o, '<b>Internet</b> (WAN 1, Beispiel Telekom AG)'), str_contains($o, '<b>Internet</b> (WAN 2)'),
+        str_contains($o, '<b>Gateway</b> (UniFi-Gerät, Port 1)'), str_contains($o, '<b>Switch Keller</b> (UniFi-Gerät, Port 22)'), str_contains($o, '<b>AP Wohnzimmer</b> (UniFi-Gerät)')], [true, true, true, true, true, true, true]);
 check('UI Netzwerk: Karte Internet (Anbieter, AS, Status, Dauer, IP, Latenz, Verfuegbarkeit, Anschluesse, Datenrate, Speedtest)', [str_contains($o, '<h4>Internet</h4>'), str_contains($o, 'Beispiel Telekom AG'), str_contains($o, '(AS64496)'), str_contains($o, '1 Tag 11 Std 10 Min'),
     str_contains($o, '203.0.113.7'), str_contains($o, '6 ms'), str_contains($o, '99,9 %'), str_contains($o, 'WAN 1: <span class="uni-led uni-led-ok"></span> Link'), str_contains($o, 'WAN 2: <span class="uni-led uni-led-aus"></span> kein Link'), str_contains($o, '(1 Gbit/s)'),
     str_contains($o, '↓ 10 Mbit/s · ↑ 0,5 Mbit/s'), str_contains($o, '↓ 940 · ↑ 45,5 Mbit/s, Ping 9 ms')], [true, true, true, true, true, true, true, true, true, true, true, true]);

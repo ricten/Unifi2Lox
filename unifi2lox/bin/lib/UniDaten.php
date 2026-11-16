@@ -94,10 +94,16 @@ final class UniDaten
                     'uplink' => !empty($p['is_uplink']), 'aktiv' => ($p['enable'] ?? true) !== false && (string)($p['forward'] ?? '') !== 'disabled', 'poe' => $poe, 'poe_an' => $gut, 'poe_modus' => (string)($p['poe_mode'] ?? ''),
                     'poe_w' => $w, 'poe_v' => $gut ? (float)($p['poe_voltage'] ?? 0) : 0.0, 'poe_ma' => $gut ? (float)($p['poe_current'] ?? 0) : 0.0,
                     'rx_bps' => (int)round((float)($p['rx_bytes-r'] ?? 0) * 8), 'tx_bps' => (int)round((float)($p['tx_bytes-r'] ?? 0) * 8),
-                    'clients' => [], 'gegenstelle' => '',
+                    'clients' => [], 'gegenstelle' => '', 'gegenstelle_port' => 0, 'wan' => '',
                 ];
             }
             ksort($ports);
+            foreach (['wan1' => 'WAN 1', 'wan2' => 'WAN 2'] as $k => $text) {      // Anschluesse des Gateways ins Internet
+                $wi = (int)($d[$k]['port_idx'] ?? 0);
+                if ($wi > 0 && isset($ports[$wi])) {
+                    $ports[$wi]['wan'] = $text;
+                }
+            }
             $funk = [];
             foreach (is_array($d['radio_table_stats'] ?? null) ? $d['radio_table_stats'] : [] as $r) {
                 $band = ['ng' => '2g', 'na' => '5g', '6e' => '6g'][(string)($r['radio'] ?? '')] ?? '';
@@ -113,7 +119,7 @@ final class UniDaten
                 'poe_gesamt_w' => $max > 0 ? (float)($d['total_used_power'] ?? $poeSumme) : $poeSumme, 'poe_max_w' => $max,
                 'ports' => $ports, 'wlan_clients' => [], 'roh_id' => (string)($d['_id'] ?? ''),
                 'uplink_mac' => ((string)($d['uplink']['type'] ?? '') === 'wire') ? UniConfig::cleanMac((string)($d['uplink']['uplink_mac'] ?? '')) : '',
-                'uplink_port' => (int)($d['uplink']['uplink_remote_port'] ?? 0),
+                'uplink_port' => (int)($d['uplink']['uplink_remote_port'] ?? 0), 'uplink_lokal' => (int)($d['uplink']['port_idx'] ?? 0),
             ];
         }
         // Clients zuordnen
@@ -150,8 +156,26 @@ final class UniDaten
         }
         // UniFi-Geraete am Port (Access Point am Switch usw.)
         foreach ($geraete as $mac => $g) {
-            if ($g['uplink_mac'] !== '' && isset($geraete[$g['uplink_mac']]['ports'][$g['uplink_port']])) {
-                $geraete[$g['uplink_mac']]['ports'][$g['uplink_port']]['gegenstelle'] = $g['name'];
+            if ($g['uplink_mac'] === '' || !isset($geraete[$g['uplink_mac']])) {
+                continue;
+            }
+            $eltern = $g['uplink_mac'];
+            $lokal = $g['uplink_lokal'];
+            if ($lokal <= 0 || !isset($g['ports'][$lokal])) {              // eigener Uplink-Port: laut Gateway-Angabe, sonst der als Uplink markierte
+                $lokal = 0;
+                foreach ($g['ports'] as $idx => $p) {
+                    if ($p['uplink']) {
+                        $lokal = $idx;
+                    }
+                }
+            }
+            if (isset($geraete[$eltern]['ports'][$g['uplink_port']])) {      // am uebergeordneten Geraet: das angeschlossene Geraet
+                $geraete[$eltern]['ports'][$g['uplink_port']]['gegenstelle'] = $g['name'];
+                $geraete[$eltern]['ports'][$g['uplink_port']]['gegenstelle_port'] = $lokal;
+            }
+            if ($lokal > 0 && $geraete[$mac]['ports'][$lokal]['gegenstelle'] === '') {     // am eigenen Uplink-Port: das uebergeordnete Geraet
+                $geraete[$mac]['ports'][$lokal]['gegenstelle'] = $geraete[$eltern]['name'];
+                $geraete[$mac]['ports'][$lokal]['gegenstelle_port'] = $g['uplink_port'];
             }
         }
         $poe = 0.0;

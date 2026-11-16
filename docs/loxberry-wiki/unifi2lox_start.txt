@@ -5,7 +5,7 @@
 ^ Autor | Rico Tengler |
 ^ Logo | {{:plugins:unifi2lox:unifi2lox.png?64|Unifi2Lox}} |
 ^ Status | BETA |
-^ Version | 0.3.0 |
+^ Version | 0.3.1 |
 ^ Min. LB Version | 4.0.0.0 |
 ^ Release Download | https://github.com/ricten/Unifi2Lox/releases/latest/download/unifi2lox.zip |
 ^ Pre-Release Download | - |
@@ -183,6 +183,7 @@ Weitere Hinweise: [[https://github.com/ricten/Unifi2Lox/blob/main/docs/wiki/Fehl
 ===== 8. Changelog =====
 
 ^ Version ^ Änderung ^
+| 0.3.1 | Reiter „Netzwerk“: am Uplink-Port steht das übergeordnete Gerät mit Port, die WAN-Anschlüsse des Gateways sind gekennzeichnet („Internet (WAN 1, Anbieter)“) |
 | 0.3.0 | Internetverbindung (nur lesend): Anbieter, Status, Verbindungsdauer, öffentliche IP, Latenz, Verfügbarkeit, WAN-Anschlüsse, Speedtest; je Client einzeln wählbar: Online-Status, IP-Adresse und aktive Verbindung |
 | 0.2.2 | Client-Tabelle per Klick auf die Spaltenköpfe sortierbar; abgeschaltete Ports wie in der UniFi-Oberfläche (weißes Kästchen, „inaktiv“) |
 | 0.2.1 | Abgeschaltete Ports als „inaktiv“ im Reiter „Netzwerk“ |

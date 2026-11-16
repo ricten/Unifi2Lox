@@ -3,8 +3,8 @@
  * Erfundene Beispieldaten im Aufbau der Antworten eines UniFi-Gateways (stat/device, stat/sta); der Aufbau entspricht einer Messung
  * an einem Cloud Gateway mit Switch und zwei Access Points. Alle MAC-Adressen und IPs sind erfunden (02:00:… und 192.0.2.x).
  *
- *   Gateway  (udm)  MAC ...01   7 Ports
- *   Switch   (usw)  MAC ...02  26 Ports, 24 mit PoE (Budget 220 W), Uplink an Port 22, Access Points an Port 4 und 6
+ *   Gateway  (udm)  MAC ...01   7 Ports (Port 5 = WAN 1, Port 7 = WAN 2, Port 1 = Switch)
+ *   Switch   (usw)  MAC ...02  26 Ports, 24 mit PoE (Budget 220 W), Uplink an Port 22 (am Port 1 des Gateways), Access Points an Port 4 und 6
  *   AP 1     (uap)  MAC ...03  6 Clients (4 im 2,4-, 2 im 5-GHz-Band), davon 1 Gast
  *   AP 2     (uap)  MAC ...04  2 Clients (beide 5 GHz)
  *   Internet (stat/health, uplink/wan1/wan2 des Gateways): erfundener Anbieter, ASN 64496 und IP 203.0.113.7 (Dokumentationsbereiche), PPPoE-Sitzung 126613 s
@@ -20,7 +20,7 @@ function fx_geraete(): array
     $gw = ['_id' => 'id-gw', 'mac' => FX_GW, 'type' => 'udm', 'model' => 'UDMA6A8', 'name' => 'Gateway', 'state' => 1, 'num_sta' => 19, 'guest-num_sta' => 1,
         'total_max_power' => 30, 'total_used_power' => 0, 'port_table' => [],
         'uplink' => ['type' => 'wire', 'uplink_mac' => '02:00:00:00:99:99', 'uplink_remote_port' => 1, 'up' => true, 'name' => 'ppp0', 'uptime' => 126613, 'latency' => 6, 'ip' => '203.0.113.7', 'speed' => 10000],
-        'wan1' => ['up' => true, 'speed' => 1000, 'ip' => '203.0.113.7', 'name' => 'eth4'], 'wan2' => ['up' => false, 'speed' => 10, 'name' => 'eth6']];
+        'wan1' => ['up' => true, 'speed' => 1000, 'ip' => '203.0.113.7', 'name' => 'eth4', 'port_idx' => 5], 'wan2' => ['up' => false, 'speed' => 10, 'name' => 'eth6', 'port_idx' => 7]];
     for ($i = 1; $i <= 7; $i++) {
         $gw['port_table'][] = ['port_idx' => $i, 'name' => 'Port ' . $i, 'up' => in_array($i, [1, 5], true), 'speed' => in_array($i, [1, 5], true) ? 1000 : 10, 'media' => $i >= 6 ? 'SFP+' : '2.5GE',
             'is_uplink' => false, 'port_poe' => $i === 4, 'poe_enable' => false, 'poe_good' => false, 'poe_power' => '0.00', 'poe_voltage' => $i === 4 ? '1.12' : '0.00', 'poe_current' => '0.00',
@@ -30,7 +30,7 @@ function fx_geraete(): array
     $up = [1, 2, 3, 4, 6, 9, 10, 11, 12, 13, 14, 17, 18, 19, 20, 21, 22, 23];
     $sw = ['_id' => 'id-sw', 'mac' => FX_SW, 'type' => 'usw', 'model' => 'US24P250', 'name' => 'Switch Keller', 'state' => 1, 'num_sta' => 11, 'guest-num_sta' => 0,
         'total_max_power' => 220, 'total_used_power' => 31.07, 'port_table' => [], 'port_overrides' => [],
-        'uplink' => ['type' => 'wire', 'uplink_mac' => FX_GW, 'uplink_remote_port' => 5]];
+        'uplink' => ['type' => 'wire', 'uplink_mac' => FX_GW, 'uplink_remote_port' => 1, 'port_idx' => 22]];
     for ($i = 1; $i <= 26; $i++) {
         $p = ['port_idx' => $i, 'name' => 'Port ' . $i, 'up' => in_array($i, $up, true), 'speed' => in_array($i, $up, true) ? ($i <= 3 || $i === 9 || $i === 10 || $i === 12 || $i === 13 || $i === 14 || $i === 23 ? 100 : 1000) : 0,
             'media' => $i > 24 ? 'SFP' : 'GE', 'is_uplink' => $i === 22, 'portconf_id' => 'pc-all', 'port_poe' => $i <= 24, 'poe_mode' => $i <= 24 ? 'auto' : null,

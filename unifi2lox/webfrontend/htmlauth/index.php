@@ -255,13 +255,17 @@ foreach ($modell['geraete'] as $g) {
             $link = ($p['aktiv'] ?? true) === false ? '<span class="uni-led uni-led-inaktiv" title="Port abgeschaltet"></span> inaktiv <span class="hinweis">(abgeschaltet)</span>' : ($p['up'] ? '<span class="uni-led uni-led-ok"></span> ' . ($p['speed'] >= 1000 ? h(UniDaten::zahl($p['speed'] / 1000, 1)) . ' Gbit/s' : (int)$p['speed'] . ' Mbit/s') : '<span class="uni-led uni-led-aus"></span> <span class="hinweis">kein Link</span>');
             $poe = !$p['poe'] ? '<span class="hinweis">-</span>' : ($p['poe_an'] ? '<b>' . h(UniDaten::zahl($p['poe_w'], 1)) . ' W</b> <span class="hinweis">(' . h(UniDaten::zahl($p['poe_ma'], 0)) . ' mA)</span>' : '<span class="hinweis">' . ($p['poe_modus'] === 'off' ? 'aus' : 'keine Last') . '</span>');
             $an = [];
+            if (($p['wan'] ?? '') !== '') {                      // Anschluss des Gateways ins Internet
+                $wanKey = $p['wan'] === 'WAN 1' ? 'wan1_up' : 'wan2_up';
+                $an[] = '<b>Internet</b> (' . h($p['wan']) . ($inet !== null && $inet['anbieter'] !== '' && !empty($inet[$wanKey]) ? ', ' . h($inet['anbieter']) : '') . ')';
+            }
             if ($p['gegenstelle'] !== '') {
-                $an[] = '<b>' . h($p['gegenstelle']) . '</b> (UniFi-Gerät)';
+                $an[] = '<b>' . h($p['gegenstelle']) . '</b> (UniFi-Gerät' . ((int)($p['gegenstelle_port'] ?? 0) > 0 ? ', Port ' . (int)$p['gegenstelle_port'] : '') . ')';
             }
             foreach ($p['clients'] as $c) {
                 $an[] = h($c['name']);
             }
-            echo '<tr><td>' . (int)$p['idx'] . ($p['name'] !== '' && $p['name'] !== 'Port ' . $p['idx'] ? ' <span class="hinweis">' . h($p['name']) . '</span>' : '') . ($p['uplink'] ? ' <span class="hinweis">(Uplink)</span>' : '') . '</td><td>' . $link . '</td><td>' . $poe . '</td><td>' . ($an ? implode(', ', $an) : '<span class="hinweis">-</span>') . '</td></tr>';
+            echo '<tr><td>' . (int)$p['idx'] . ($p['name'] !== '' && $p['name'] !== 'Port ' . $p['idx'] ? ' <span class="hinweis">' . h($p['name']) . '</span>' : '') . ($p['uplink'] ? ' <span class="hinweis">(Uplink)</span>' : '') . (($p['wan'] ?? '') !== '' ? ' <span class="hinweis">(' . h($p['wan']) . ')</span>' : '') . '</td><td>' . $link . '</td><td>' . $poe . '</td><td>' . ($an ? implode(', ', $an) : '<span class="hinweis">-</span>') . '</td></tr>';
         }
         echo '</table></div>';
     }
