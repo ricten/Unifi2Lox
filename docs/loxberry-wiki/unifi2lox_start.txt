@@ -101,7 +101,7 @@ Gespeichert werden nur die gewählten Clients (MAC-Adresse und Name im Topic). N
 
 ==== 3.4 Netzwerk, MQTT, Test und Logdateien ====
 
-Der Reiter **Netzwerk** zeigt je Gerät die Ports mit Link, PoE-Leistung und den angeschlossenen Clients, je Access Point die WLAN-Clients mit Band und Signal. Die Seite aktualisiert sich nicht von selbst. Der Reiter MQTT zeigt das **Gateway-Abo** und die Verbindung zum Broker. Im Reiter Test gibt es die Selbstprüfung (mit einer eigenen, kurzen Sitzung am Gateway, nur lesend) und den Dienst-Neustart.
+Der Reiter **Netzwerk** zeigt je Gerät die Ports mit Link (abgeschaltete Ports als „inaktiv“), PoE-Leistung und den angeschlossenen Clients, je Access Point die WLAN-Clients mit Band und Signal. Die Seite aktualisiert sich nicht von selbst. Der Reiter MQTT zeigt das **Gateway-Abo** und die Verbindung zum Broker. Im Reiter Test gibt es die Selbstprüfung (mit einer eigenen, kurzen Sitzung am Gateway, nur lesend) und den Dienst-Neustart.
 
 ===== 4. MQTT-Topics (Referenz) =====
 

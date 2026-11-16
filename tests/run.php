@@ -669,8 +669,12 @@ Util::jsonSave("$uiDir/dev/run/status.json", $stOk);
 [$o] = $uiPage('verbindung');
 check('UI Verbindung: angemeldet mit letzter Abfrage', [str_contains($o, '<b>angemeldet</b>'), str_contains($o, 'Letzte Abfrage'), str_contains($o, '120 ms')], [true, true, true]);
 // Netzuebersicht aus dem Modell
-Util::jsonSave("$uiDir/dev/run/netz.json", ['zeit' => time(), 'modell' => $m0 = UniDaten::modell(fx_geraete(), fx_clients()), 'bekannt' => UniDaten::bekannte(fx_bekannte())]);
+$devsUi = fx_geraete();
+$devsUi[1]['port_table'][14]['enable'] = false;          // Port 15 des Switches abgeschaltet (wie in der Oberflaeche des Gateways)
+$devsUi[1]['port_table'][14]['forward'] = 'disabled';
+Util::jsonSave("$uiDir/dev/run/netz.json", ['zeit' => time(), 'modell' => $m0 = UniDaten::modell($devsUi, fx_clients()), 'bekannt' => UniDaten::bekannte(fx_bekannte())]);
 [$o, $e] = $uiPage('netz');
+check('UI Netzwerk: abgeschalteter Port steht als inaktiv da (genau einer), andere Ports ohne Link nicht', [substr_count($o, 'uni-led-inaktiv" title="Port abgeschaltet"></span> <b>inaktiv</b>'), str_contains($o, 'kein Link')], [1, true]);
 check('UI Netzwerk: Geraete, Ports, PoE, Clients je Port, Access-Point-Clients', [str_contains($o, 'Switch Keller'), str_contains($o, 'US-24-250W'), str_contains($o, '6,2 W') || str_contains($o, '6.2 W'), str_contains($o, 'AP Wohnzimmer</b> (UniFi-Gerät)'), str_contains($o, 'WLAN-Client 1'),
     str_contains($o, '4 im 2,4 GHz'), str_contains($o, 'Kabel-Client 3'), str_contains($o, '19 Clients (11 Kabel, 8 WLAN)'), $bad($o, $e)], [true, true, true, true, true, true, true, true, false]);
 [$o, $e] = $uiPage('clients');

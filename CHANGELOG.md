@@ -2,6 +2,11 @@
 
 Alle Änderungen an diesem Plugin. Schema: MAJOR.MINOR.PATCH.
 
+## [0.2.1] - 2026-11-16
+
+### Geändert
+- Die Weboberfläche (Reiter „Netzwerk“) zeigt einen abgeschalteten Port jetzt als **inaktiv** (orange Anzeige, „abgeschaltet“) statt als „kein Link“. Das gilt für Ports, die per Befehl `aktiv` oder in der Oberfläche des Gateways abgeschaltet wurden (`port<nr>/aktiv` = 0).
+
 ## [0.2.0] - 2026-11-16
 
 ### Neu

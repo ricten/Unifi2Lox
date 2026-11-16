@@ -102,6 +102,7 @@ LBWeb::lbheader('Unifi2Lox ' . AppVersion::CURRENT, '', '', true);
  .uni .uni-schmal { width:90px !important; } .uni .uni-mittel { width:170px !important; } .uni .uni-breit { width:280px !important; }
  .uni-led { display:inline-block; width:14px; height:14px; border-radius:3px; vertical-align:middle; border:1px solid rgba(0,0,0,.35); }
  .uni-warn { color:var(--lb-warning,#b9770e); }
+ .uni-led-inaktiv { background:var(--lb-warning,#e0a800); }
  .uni-led-ok { background:var(--lb-success,#2ecc40); } .uni-led-fehler { background:var(--lb-danger,#e74c3c); } .uni-led-aus { background:var(--lb-gray-400,#bbb); }
  .uni .uni-kl { font-size:90%; }
 </style>
@@ -213,7 +214,7 @@ foreach ($modell['geraete'] as $g) {
     if ($g['ports']) {
         echo '<div class="lb-table-scroll"><table class="lb-table uni-kl"><tr><th>Port</th><th>Link</th><th>PoE</th><th>Angeschlossen</th></tr>';
         foreach ($g['ports'] as $p) {
-            $link = $p['up'] ? '<span class="uni-led uni-led-ok"></span> ' . ($p['speed'] >= 1000 ? h(UniDaten::zahl($p['speed'] / 1000, 1)) . ' Gbit/s' : (int)$p['speed'] . ' Mbit/s') : '<span class="uni-led uni-led-aus"></span> <span class="hinweis">kein Link</span>';
+            $link = ($p['aktiv'] ?? true) === false ? '<span class="uni-led uni-led-inaktiv" title="Port abgeschaltet"></span> <b>inaktiv</b> <span class="hinweis">(abgeschaltet)</span>' : ($p['up'] ? '<span class="uni-led uni-led-ok"></span> ' . ($p['speed'] >= 1000 ? h(UniDaten::zahl($p['speed'] / 1000, 1)) . ' Gbit/s' : (int)$p['speed'] . ' Mbit/s') : '<span class="uni-led uni-led-aus"></span> <span class="hinweis">kein Link</span>');
             $poe = !$p['poe'] ? '<span class="hinweis">-</span>' : ($p['poe_an'] ? '<b>' . h(UniDaten::zahl($p['poe_w'], 1)) . ' W</b> <span class="hinweis">(' . h(UniDaten::zahl($p['poe_ma'], 0)) . ' mA)</span>' : '<span class="hinweis">' . ($p['poe_modus'] === 'off' ? 'aus' : 'keine Last') . '</span>');
             $an = [];
             if ($p['gegenstelle'] !== '') {
